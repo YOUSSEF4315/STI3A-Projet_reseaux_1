@@ -4,6 +4,7 @@ from ai import CaptainBraindead, MajorDaft
 from knight import Knight
 from pikeman import Pikeman
 from crossbowman import Crossbowman
+from smartAI import SmartAI
 
 def scenario_simple_vs_braindead() -> Game:
     # 1. LA TAILLE LÉGALE (120x120)
@@ -13,6 +14,7 @@ def scenario_simple_vs_braindead() -> Game:
     controllers = {
         "A": MajorDaft("A"),
         "B": CaptainBraindead("B"),
+        
     }
 
     game = Game(battle_map, controllers)
@@ -117,4 +119,67 @@ def scenario_small_terminal() -> Game:
         game.add_unit(Crossbowman(), "B", r, mid_c +11 )
 
     print(f"Scénario 'Terminal Dense Centré' généré : {len(game.units)} unités sur {rows}x{cols}.")
+    return game
+
+
+def scenario_smart_vs_ai(ai1_class, ai2_class, ai1_name="AI1", ai2_name="AI2") -> Game:
+    """
+    Scénario générique pour le tournoi avec SmartAI
+    """
+    rows, cols = 120, 120
+    battle_map = BattleMap(rows=rows, cols=cols)
+
+    controllers = {
+        "A": ai1_class("A"),
+        "B": ai2_class("B"),
+    }
+
+    game = Game(battle_map, controllers)
+
+    # Calcul du centre
+    center_r = rows // 2
+    center_c = cols // 2
+
+    # ESPACEMENT STANDARD
+    SPACING = 2
+
+    # ---------------------------------------------------------
+    # ARMÉE A (Gauche)
+    # ---------------------------------------------------------
+    base_col_A = center_c - 20
+    
+    # MUR DE PIQUIERS
+    for c in range(base_col_A + 4, base_col_A + 7): 
+        for r in range(center_r - 20, center_r + 20, 2): 
+            game.add_unit(Pikeman(), "A", row=r, col=c)
+
+    # CHEVALIERS
+    for c in range(base_col_A, base_col_A + 3, 2):
+        for r in range(center_r - 10, center_r + 10, 2):
+            game.add_unit(Knight(), "A", row=r, col=c)
+
+    # ARBALÉTRIERS
+    for r in range(center_r - 25, center_r + 25, 2):
+        game.add_unit(Crossbowman(), "A", row=r, col=base_col_A - 4)
+
+    # ---------------------------------------------------------
+    # ARMÉE B (Droite)
+    # ---------------------------------------------------------
+    base_col_B = center_c + 20
+    
+    # MUR DE PIQUIERS
+    for c in range(base_col_B - 7, base_col_B - 4):
+        for r in range(center_r - 20, center_r + 20, 2):
+            game.add_unit(Pikeman(), "B", row=r, col=c)
+
+    # CHEVALIERS
+    for c in range(base_col_B - 3, base_col_B, 2):
+        for r in range(center_r - 10, center_r + 10, 2):
+            game.add_unit(Knight(), "B", row=r, col=c)
+
+    # ARBALÉTRIERS
+    for r in range(center_r - 25, center_r + 25, 2):
+        game.add_unit(Crossbowman(), "B", row=r, col=base_col_B + 4)
+
+    print(f"Scénario généré : {len(game.units)} unités prêtes au combat ({ai1_name} vs {ai2_name}).")
     return game

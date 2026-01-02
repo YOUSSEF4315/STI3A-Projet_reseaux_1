@@ -5,13 +5,13 @@ from collections import defaultdict
 
 from main import scenario_simple_vs_braindead
 from ai import CaptainBraindead, MajorDaft 
-
+from smartAI import SmartAI
 
 # --- CONFIGURATION ---
 AVAILABLE_GENERALS = {
     "Braindead": CaptainBraindead,
     "Daft": MajorDaft,
-   
+    "SmartAI": SmartAI
 }
 
 AVAILABLE_SCENARIOS = {
@@ -213,13 +213,13 @@ class Tournament:
 if __name__ == "__main__":
     # --- CONFIGURATION DU LANCEMENT ---
     # Liste des participants
-    ai_participants = ["Braindead", "Daft"] 
+    ai_participants = ["Braindead", "Daft","SmartAI"] 
    
     
     scenarios = ["Scenario_Standard"]
     
     # 20 rounds = 10 allers + 10 retours pour chaque paire
-    t = Tournament(ai_participants, scenarios, rounds=20)
+    t = Tournament(ai_participants, scenarios, rounds=10)
     t.run()
 
 
