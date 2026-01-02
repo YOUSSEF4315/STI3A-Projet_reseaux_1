@@ -219,7 +219,7 @@ if __name__ == "__main__":
     scenarios = ["Scenario_Standard"]
     
     # 20 rounds = 10 allers + 10 retours pour chaque paire
-    t = Tournament(ai_participants, scenarios, rounds=10)
+    t = Tournament(ai_participants, scenarios, rounds=4)
     t.run()
 
 
