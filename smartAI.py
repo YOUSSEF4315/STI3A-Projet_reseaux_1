@@ -46,7 +46,7 @@ class SmartAI:
     
     # Choix de cible
     
-    def choose_best_target(self, attacker, enemies: List) -> Optional:
+    def choose_best_target(self, attacker, enemies: List) -> Optional: # type: ignore
         if not enemies:
             return None
         
@@ -61,7 +61,7 @@ class SmartAI:
     
     # Logique de retraite
     
-    def should_retreat(self, unit, enemies: List, game) -> Tuple[bool, Optional]:
+    def should_retreat(self, unit, enemies: List, game) -> Tuple[bool, Optional[object]]:
         """2 Conditions de fuite:
         1. KITING: Archer avec mêlée trop proche
         2. MATCHUP PERDANT: Ennemi me tue bien plus vite"""
