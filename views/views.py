@@ -17,6 +17,10 @@ COLOR_TEAM_B = (220, 20, 60)  # Rouge
 COLOR_MINIMAP_BG = (30, 30, 30) # Gris Foncé
 COLOR_VIEWPORT = (255, 255, 255) # Cadre blanc caméra
 
+# Nouvelles couleurs pour l'UI
+COLOR_PANEL_BG = (0, 0, 0, 180) # Noir semi-transparent
+COLOR_TEXT = (255, 255, 255) # Blanc
+
 class GUI:
     def __init__(self, game_instance):
         self.game = game_instance
@@ -28,8 +32,22 @@ class GUI:
         # État de la minimap
         self.show_minimap = True
         
+        # --- NOUVEAU : États des panneaux de stats ---
+        self.show_panel_a = True   # F1
+        self.show_panel_b = True   # F2
+        self.show_details = True   # F3
+        self.show_ui_master = True # F4
+        
+        # Timer pour éviter le "rebond" des touches (clignotement)
+        self.last_toggle_time = 0
+        
         self.assets = {}
         self._load_assets()
+
+        # Polices d'écriture pour l'UI
+        pygame.font.init()
+        self.font_ui = pygame.font.SysFont("Arial", 14)
+        self.font_title = pygame.font.SysFont("Arial", 16, bold=True)
 
     def _load_assets(self):
         # 1. SOL
@@ -81,18 +99,42 @@ class GUI:
         self.camera_y = (SCREEN_H // 2) - target_y
 
     def handle_input(self):
+        """ Gère toutes les entrées (Clavier et Souris) """
         keys = pygame.key.get_pressed()
+        
+        # 1. Caméra Clavier (Maintenu)
         s = 20
-        # Caméra Clavier
         if keys[pygame.K_LEFT]: self.camera_x += s
         if keys[pygame.K_RIGHT]: self.camera_x -= s
         if keys[pygame.K_UP]: self.camera_y += s
         if keys[pygame.K_DOWN]: self.camera_y -= s
 
-        if keys[pygame.K_m]: pass 
+        # 2. Touches "Toggle" (Appui unique)
+        # On utilise un délai (cooldown) de 200ms pour éviter le clignotement rapide
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_toggle_time > 200:
+            
+            # F1 - F4 : Gestion UI
+            if keys[pygame.K_F1]:
+                self.show_panel_a = not self.show_panel_a
+                self.last_toggle_time = current_time
+            if keys[pygame.K_F2]:
+                self.show_panel_b = not self.show_panel_b
+                self.last_toggle_time = current_time
+            if keys[pygame.K_F3]:
+                self.show_details = not self.show_details
+                self.last_toggle_time = current_time
+            if keys[pygame.K_F4]:
+                self.show_ui_master = not self.show_ui_master
+                self.last_toggle_time = current_time
+            
+            # M : Minimap
+            if keys[pygame.K_m]:
+                self.show_minimap = not self.show_minimap
+                self.last_toggle_time = current_time
 
         # --- GESTION SOURIS MINIMAP ---
-        if self.show_minimap and pygame.mouse.get_pressed()[0] and self.map:
+        if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and self.map:
             mx, my = pygame.mouse.get_pos()
             
             # Récupération dimensions
@@ -112,8 +154,6 @@ class GUI:
             # Coordonnées écran
             mini_x = SCREEN_W - MINIMAP_WIDTH - MINIMAP_MARGIN
             mini_y = SCREEN_H - mini_height - MINIMAP_MARGIN
-            
-            # Décalage monde
             offset_x_world = max_rows * TILE_WIDTH / 2
             
             # Si on clique DANS la zone ajustée
@@ -133,8 +173,8 @@ class GUI:
                 self.camera_y = (SCREEN_H // 2) - world_click_y
 
     def draw_minimap(self, screen):
-        """ Dessine la minimap isométrique ajustée """
-        if not self.show_minimap or not self.map:
+        """ Dessine la minimap rectangulaire en bas à droite """
+        if not self.show_minimap or not self.map or not self.show_ui_master:
             return
 
         max_rows = getattr(self.map, 'rows', 120)
@@ -143,21 +183,13 @@ class GUI:
         # --- CALCULS DE PROJECTION ---
         iso_width = (max_cols + max_rows) * TILE_WIDTH / 2
         iso_height = (max_cols + max_rows) * TILE_HEIGHT / 2
-        
-        # Echelle pour tenir dans MINIMAP_WIDTH
         scale = MINIMAP_WIDTH / iso_width
-        
-        # Hauteur calculée (Sur Mesure)
         mini_height = iso_height * scale
 
-        # Position sur l'écran (Bas Droite)
         rect_x = SCREEN_W - MINIMAP_WIDTH - MINIMAP_MARGIN
         rect_y = SCREEN_H - mini_height - MINIMAP_MARGIN
-        
-        # Décalage X monde
         offset_x_world = max_rows * TILE_WIDTH / 2
 
-        # Fonction locale de conversion
         def to_mini(r, c):
             wx, wy = self.cart_to_iso(r, c)
             mx = rect_x + (wx + offset_x_world) * scale
@@ -170,10 +202,7 @@ class GUI:
         pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), MINIMAP_BORDER)
 
         # 2. Losange Vert (Map)
-        p1 = to_mini(0, 0)
-        p2 = to_mini(0, max_cols)
-        p3 = to_mini(max_rows, max_cols)
-        p4 = to_mini(max_rows, 0)
+        p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
         
         # On dessine le losange vert par dessus le gris (optionnel, ou on garde juste le gris)
         pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4]) # Vert un peu plus foncé
@@ -190,6 +219,7 @@ class GUI:
             team = getattr(unit, 'team', '?')
             color = COLOR_TEAM_A if team == "A" else COLOR_TEAM_B
             
+            # Petit cercle
             pygame.draw.circle(screen, color, (int(px), int(py)), 3)
 
         # 4. Cadre de la Caméra
@@ -206,10 +236,70 @@ class GUI:
         # On dessine le rectangle de vue
         # On utilise un clipping pour qu'il ne sorte pas du cadre gris (esthétique)
         camera_rect = pygame.Rect(mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h)
-        container_rect = pygame.Rect(rect_x, rect_y, MINIMAP_WIDTH, mini_height)
         
         # Dessin du cadre (non clippé pour voir où on est même si hors map)
         pygame.draw.rect(screen, COLOR_VIEWPORT, camera_rect, 1)
+
+    # --- NOUVEAU : Méthode pour dessiner les stats ---
+    def draw_army_stats(self, screen):
+        """ Affiche les panneaux de statistiques des armées """
+        if not self.show_ui_master: return
+
+        # 1. Calcul des comptes en temps réel
+        counts = {'A': {}, 'B': {}}
+        totals = {'A': 0, 'B': 0}
+
+        units = getattr(self.game, 'alive_units', lambda: [])()
+        for u in units:
+            team = getattr(u, 'team', '?')
+            u_type = type(u).__name__
+            
+            if team not in counts: counts[team] = {}
+            
+            counts[team][u_type] = counts[team].get(u_type, 0) + 1
+            totals[team] += 1
+
+        # 2. Dessin Panneau A (Gauche)
+        if self.show_panel_a:
+            self._draw_single_panel(screen, "Équipe A (Bleu)", counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
+
+        # 3. Dessin Panneau B (Droite)
+        if self.show_panel_b:
+            self._draw_single_panel(screen, "Équipe B (Rouge)", counts.get('B', {}), totals.get('B', 0), SCREEN_W - 220, 20, COLOR_TEAM_B)
+
+    def _draw_single_panel(self, screen, title, data, total, x, y, color):
+        # Hauteur dynamique
+        h = 35
+        if self.show_details:
+            h += len(data) * 20 + 5
+
+        # Fond
+        s = pygame.Surface((200, h), pygame.SRCALPHA)
+        s.fill(COLOR_PANEL_BG) 
+        screen.blit(s, (x, y))
+        
+        # Bordure de couleur
+        pygame.draw.rect(screen, color, (x, y, 4, h))
+
+        # Titre
+        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT)
+        screen.blit(title_surf, (x + 10, y + 8))
+
+        # Détails
+        if self.show_details:
+            y_off = 35
+            for u_type, count in sorted(data.items()):
+                # Icône
+                icon = self.assets.get(u_type.lower())
+                txt_x = x + 10
+                if icon:
+                    icon_small = pygame.transform.scale(icon, (16, 16))
+                    screen.blit(icon_small, (x + 10, y + y_off))
+                    txt_x = x + 30
+                
+                txt_surf = self.font_ui.render(f"{u_type}: {count}", True, (200, 200, 200))
+                screen.blit(txt_surf, (txt_x, y + y_off))
+                y_off += 20
 
     def draw(self, screen):
         screen.fill((20, 20, 20))
@@ -229,11 +319,9 @@ class GUI:
         # UNITÉS
         units = getattr(self.game, 'alive_units', lambda: [])()
         for unit in units:
-            u_x = getattr(unit, 'x', 0)
-            u_y = getattr(unit, 'y', 0)
+            u_x = getattr(unit, 'x', 0); u_y = getattr(unit, 'y', 0)
             x_iso, y_iso = self.cart_to_iso(u_x, u_y)
-            screen_x = x_iso + self.camera_x + 8
-            screen_y = y_iso + self.camera_y - 20
+            screen_x = x_iso + self.camera_x + 8; screen_y = y_iso + self.camera_y - 20
 
             team = getattr(unit, 'team', '?')
             color = COLOR_TEAM_A if team == "A" else COLOR_TEAM_B
@@ -253,5 +341,6 @@ class GUI:
                 w = min(40, max(0, int(hp / 2.5))) 
                 pygame.draw.rect(screen, (0, 255, 0), (screen_x, screen_y - 5, w, 4))
 
-        # MINIMAP
+        # --- DESSIN DES PANNEAUX UI (EN DERNIER) ---
         self.draw_minimap(screen)
+        self.draw_army_stats(screen)

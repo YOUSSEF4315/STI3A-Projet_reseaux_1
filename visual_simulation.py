@@ -27,7 +27,7 @@ def main():
     game_over_processed = False # Pour ne pas spammer le terminal
 
     print("\n--- COMMANDES ---")
-    print("[ENTRÉE] : Lancer / Pause (Auto-play)")
+    print("[P] : Lancer / Pause (Auto-play)")
     print("[ESPACE] : Avancer pas à pas")
     print("-----------------\n")
 
@@ -39,11 +39,11 @@ def main():
             
             if event.type == pygame.KEYDOWN:
                 # Toggle Auto-play
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_p:
                     if not game.is_finished():
                         auto_play = not auto_play
-                        state = "ON" if auto_play else "OFF"
-                        print(f"Lecture automatique : {state}")
+                        state = "LECTURE" if auto_play else "PAUSE"
+                        print(f"état : {state}")
                 
                 # Pas à pas (seulement si pas fini)
                 if event.key == pygame.K_SPACE:
