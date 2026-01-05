@@ -118,8 +118,8 @@ class MajorDaft(BaseController):
 
 class AssasinJack(BaseController):
     """
-    Major DAFT (IA n°2)
-    - Ordonne à chaque unité d'attaquer l'ENNEMI LE PLUS PROCHE,
+    Assasin Jack (IA n°4)
+    - Ordonne à chaque unité d'attaquer l'ennemi avec le moin de hp,
       sans aucune autre considération.
     - Si l'ennemi est à portée -> attaque.
     - Sinon -> l'unité se déplace en ligne droite vers cet ennemi.
