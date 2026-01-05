@@ -61,7 +61,7 @@ class SmartAI:
     
     # Logique de retraite
     
-    def should_retreat(self, unit, enemies: List, game) -> Tuple[bool, Optional[object]]:
+    def should_retreat(self, unit, enemies: List, game) -> Tuple[bool, object | None]:
         """2 Conditions de fuite:
         1. KITING: Archer avec mêlée trop proche
         2. MATCHUP PERDANT: Ennemi me tue bien plus vite"""

@@ -115,6 +115,52 @@ class MajorDaft(BaseController):
         return actions
 
 
+
+class AssasinJack(BaseController):
+    """
+    Assasin Jack (IA n°4)
+    - Ordonne à chaque unité d'attaquer l'ennemi avec le moin de hp,
+      sans aucune autre considération.
+    - Si l'ennemi est à portée -> attaque.
+    - Sinon -> l'unité se déplace en ligne droite vers cet ennemi.
+    - Le moteur de jeu (_do_move) se charge de limiter la distance
+      parcourue à speed * dt.
+    """
+
+    def __init__(self, team: str, decision_interval: float = 0.3):
+        # Daft réagit un peu plus souvent que Braindead
+        super().__init__(team, decision_interval)
+
+
+    def decide_actions(self, game: Game) -> List[tuple[Any, ...]]:
+        actions: List[tuple[Any, ...]] = []
+        my_units = game.alive_units_of_team(self.team)
+
+        for u in my_units:
+            # Trouver l'ennemi avec le moin de hp
+            target = game.find_lowest_hp_ennemy(u)
+            if target is None:
+                continue
+
+            # Distance réelle (euclidienne) entre u et target
+            dist = game.map.distance(u, target)
+
+            # Si on peut frapper, on frappe
+            if hasattr(u, "in_range") and u.in_range(dist):
+                u.intent = ("attack", target)
+                continue
+
+            # Sinon, on demande un mouvement vers la position de la cible
+            target_x = float(getattr(target, "x", 0.0))
+            target_y = float(getattr(target, "y", 0.0))
+            u.intent = ("move_to", target_x, target_y)
+
+
+
+        return actions
+
+
+
 class SimpleAI(MajorDaft):
     """
     Alias de MajorDaft pour compatibilité avec l'ancien code.
