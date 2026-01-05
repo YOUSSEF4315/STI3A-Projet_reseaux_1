@@ -11,7 +11,8 @@ from smartAI import SmartAI
 TEAM_INFO = {
     "A": {"name": "Kingdom of the North", "color": "Bleu", "ia": "MajorDaft (agressive)"},
     "B": {"name": "Empire of the South", "color": "Rouge", "ia": "Captain BRAINDEAD (statique)"},
-    "C": {"name": "Smart Alliance", "color": "Vert", "ia": "SmartAI (intelligent)"},
+    "C": {"name": "Smart Alliance", "color": "Vert", "ia": "SmartAI (intelligente)"},
+    "C": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
 }
 
 
