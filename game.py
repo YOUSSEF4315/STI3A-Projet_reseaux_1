@@ -128,7 +128,7 @@ class Game:
                 best_target = e
         return best_target
 
-    def prediction(self , t , i=1 ,  ennemi , total_damage = 0 , x = self.x , y = self.y ):
+    def prediction(self , t , i ,  ennemi , total_damage , x , y ):
         """Renvoie l'ennemi le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer t tours."""
         dx = ennemi.x - x
         dy = ennemi.y - y
