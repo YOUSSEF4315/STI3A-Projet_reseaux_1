@@ -128,24 +128,24 @@ class Game:
                 best_target = e
         return best_target
 
-    def prediction(self , t , i ,  ennemi , total_damage , x , y ):
+    def prediction(self , unite , t , i ,  ennemi , total_damage , x , y ):
         """Renvoie l'ennemi le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer t tours."""
         dx = ennemi.x - x
         dy = ennemi.y - y
         dist = math.hypot(dx, dy)
-        if dist > self.range : 
+        if dist > unite.range : 
             speed = float(getattr(unit, "speed", 1.0))
             dt: float = 1.0
             step = speed * dt
             ux = dx / dist
             uy = dy / dist
-            new_x = float(self.x) + ux * step
-            new_y = float(self.y) + uy * step
-            return prediction(self , t , i+1 , total_damage , new_x , new_y )
-        total_damage += self.attaquer(ennemi, dist)
+            new_x = x + ux * step
+            new_y = y + uy * step
+            return prediction(unite , t , i+1 , ennemi , total_damage , new_x , new_y )
+        total_damage += unite.attaquer(ennemi, dist)
         if total_damage >= ennemi.hp:
             return i
-        return prediction(self , t , i+1 , total_damage , x , y )
+        return prediction(unite , t , i+1 , ennemi , total_damage , x , y )
         
 
     # ------------------------------------------------------------------
