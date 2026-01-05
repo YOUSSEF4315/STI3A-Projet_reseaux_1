@@ -196,7 +196,7 @@ class PredictEinstein(BaseController):
             if target is None:
                 # Trouver l'ennemi le plus proche
                 target = game.find_closest_enemy(u)
-                 if target is None:
+                if target is None:
                      continue
 
             # Distance réelle (euclidienne) entre u et target

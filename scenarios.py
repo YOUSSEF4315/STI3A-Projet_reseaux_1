@@ -1,6 +1,6 @@
 from game import Game
 from map import BattleMap
-from ai import CaptainBraindead, MajorDaft
+from ai import CaptainBraindead,MajorDaft
 from knight import Knight
 from pikeman import Pikeman
 from crossbowman import Crossbowman
