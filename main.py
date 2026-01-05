@@ -4,7 +4,7 @@ import os
 import time
 
 from game import Game
-from scenarios import scenario_lanchester  # on importe notre scénario
+from scenarios import scenario_simple_vs_braindead  # on importe notre scénario
 from smartAI import SmartAI
 
 
@@ -12,7 +12,7 @@ TEAM_INFO = {
     "A": {"name": "Kingdom of the North", "color": "Bleu", "ia": "MajorDaft (agressive)"},
     "B": {"name": "Empire of the South", "color": "Rouge", "ia": "Captain BRAINDEAD (statique)"},
     "C": {"name": "Smart Alliance", "color": "Vert", "ia": "SmartAI (intelligente)"},
-    "C": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
+    "D": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
 }
 
 
@@ -143,7 +143,7 @@ def write_battle_summary(game: Game, filepath: str):
 
 def main():
     # 1) Construire le scénario (on pourra changer ici pour un autre scénario)
-    game = scenario_lanchester("knight",50)
+    game = scenario_simple_vs_braindead()
 
     dt = 0.2
     max_time = 200.0

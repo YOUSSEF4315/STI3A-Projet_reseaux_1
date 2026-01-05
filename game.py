@@ -120,7 +120,7 @@ class Game:
             return None
 
         best_target = None
-        lowest_hp = -1
+        lowest_hp = float("inf")
         for e in enemies:
             d = self.map.distance(unit, e)
             if d < lowest_hp:
@@ -128,7 +128,7 @@ class Game:
                 best_target = e
         return best_target
 
-    def prediction(self , t , i=1 ,  ennemi , total_damage , x = self.x , y = self.y ):
+    def prediction(self, t, ennemi, total_damage, i=1, x=None, y=None):
         """Renvoie l'ennemi le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer t tours."""
         dx = ennemi.x - x
         dy = ennemi.y - y
