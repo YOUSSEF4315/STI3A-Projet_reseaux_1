@@ -1,4 +1,7 @@
 import pygame
+import webbrowser
+import os
+import pickle  # Module pour sauvegarder/charger les objets Python
 
 # --- CONSTANTES ---
 TILE_WIDTH = 64
@@ -132,6 +135,44 @@ class GUI:
             if keys[pygame.K_m]:
                 self.show_minimap = not self.show_minimap
                 self.last_toggle_time = current_time
+
+            # --- SAUVEGARDE ET CHARGEMENT (F11 / F12) ---
+            
+            # F11 : Sauvegarde Rapide (Quick Save)
+            if keys[pygame.K_F11]:
+                try:
+                    # On sauvegarde l'objet 'game' complet dans un fichier
+                    with open("quicksave.pkl", "wb") as f:
+                        pickle.dump(self.game, f)
+                    print("💾 Partie sauvegardée dans 'quicksave.pkl'")
+                    # Petit hack visuel : on utilise le titre pour confirmer
+                    pygame.display.set_caption("Age of Python - PARTIE SAUVEGARDÉE !")
+                except Exception as e:
+                    print(f"❌ Erreur sauvegarde : {e}")
+                self.last_toggle_time = current_time
+
+            # F12 : Chargement Rapide (Quick Load)
+            if keys[pygame.K_F12]:
+                if os.path.exists("quicksave.pkl"):
+                    try:
+                        with open("quicksave.pkl", "rb") as f:
+                            loaded_game = pickle.load(f)
+                        
+                        # ASTUCE : On met à jour l'objet game existant avec les données chargées
+                        # Cela permet de ne pas briser la référence dans la boucle principale
+                        self.game.__dict__.update(loaded_game.__dict__)
+                        
+                        # On met à jour la référence de la map dans la GUI
+                        self.map = self.game.map
+                        
+                        print("📂 Partie chargée avec succès !")
+                        pygame.display.set_caption("Age of Python - PARTIE CHARGÉE !")
+                    except Exception as e:
+                        print(f"❌ Erreur chargement : {e}")
+                else:
+                    print("⚠️ Aucune sauvegarde trouvée.")
+                self.last_toggle_time = current_time
+
 
         # --- GESTION SOURIS MINIMAP ---
         if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and self.map:

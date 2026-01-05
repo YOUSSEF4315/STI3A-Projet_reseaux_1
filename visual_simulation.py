@@ -3,13 +3,13 @@ import sys
 
 # --- IMPORTS ---
 # On importe la fonction de création ET les infos des équipes (couleurs, noms)
-from main import scenario_simple_vs_braindead, TEAM_INFO
+from main import scenario_lanchester, TEAM_INFO
 from views.views import GUI
 
 def main():
     # 1. SETUP
     print("Initialisation de la bataille...")
-    game = scenario_simple_vs_braindead()
+    game = scenario_lanchester("knight",50)
 
     pygame.init()
     # On définit les constantes de taille ici pour les réutiliser dans le centrage du texte
