@@ -159,6 +159,67 @@ class AssasinJack(BaseController):
 
         return actions
 
+class PredictEinstein(BaseController):
+    """
+    Predict Einstein (IA n°5)
+    - Prédit dans 5 actions d'une unité si elle peut tuer une unité adverse
+    - Ordonne à chaque unité d'attaquer l'ennemi auquel le moin d'actions sera
+    nécessaire pour le tuer ( si cela est possible en moin de 5 actions ) 
+    - Sinon , copie MajorDaft
+        - Ordonne à chaque unité d'attaquer l'ENNEMI LE PLUS PROCHE,
+      sans aucune autre considération.
+        - Si l'ennemi est à portée -> attaque.
+        - Sinon -> l'unité se déplace en ligne droite vers cet ennemi.
+    - Le moteur de jeu (_do_move) se charge de limiter la distance
+      parcourue à speed * dt.
+    """
+
+    def __init__(self, team: str, decision_interval: float = 0.3):
+        # Daft réagit un peu plus souvent que Braindead
+        super().__init__(team, decision_interval)
+
+
+    def decide_actions(self, game: Game) -> List[tuple[Any, ...]]:
+        actions: List[tuple[Any, ...]] = []
+        my_units = game.alive_units_of_team(self.team)
+
+        for u in my_units:
+            # Trouver l'ennemi avec le moin de tours a faire pour le tuer ( en 5 ou moin )
+            target = None
+            tours_necessaires_min = float("inf")
+            team = getattr(u, "team", None)
+            enemies = self.enemy_units_of(team)
+            for e in enemies:
+                tours_necessaires = game.prediction(u , 5 , 1 , e , 0 , u.x , u.y)
+                if tours_necessaires < tours_necessaires_min : 
+                    tours_necessaires_min = tours_necessaires
+                    target = e
+                    
+            if target is None:
+                # Trouver l'ennemi le plus proche
+                target = game.find_closest_enemy(u)
+                if target is None:
+                     continue
+
+            # Distance réelle (euclidienne) entre u et target
+            dist = game.map.distance(u, target)
+
+            # Si on peut frapper, on frappe
+            if hasattr(u, "in_range") and u.in_range(dist):
+                u.intent = ("attack", target)
+                continue
+
+            # Sinon, on demande un mouvement vers la position de la cible
+            target_x = float(getattr(target, "x", 0.0))
+            target_y = float(getattr(target, "y", 0.0))
+            u.intent = ("move_to", target_x, target_y)
+
+
+
+        return actions
+
+
+
 
 
 class SimpleAI(MajorDaft):

@@ -4,7 +4,7 @@ from collections import defaultdict
 # --- IMPORTS ---
 
 from scenarios import scenario_small_terminal
-from ai import CaptainBraindead, MajorDaft 
+from ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
 from smartAI import SmartAI
 
 # --- CONFIGURATION ---
@@ -12,6 +12,8 @@ AVAILABLE_GENERALS = {
     "Braindead": CaptainBraindead,
     "Daft": MajorDaft,
     "SmartAI": SmartAI,
+    "AssasinJack": AssasinJack,
+    "PredictEinstein": PredictEinstein,
 }
 
 AVAILABLE_SCENARIOS = {
@@ -213,7 +215,7 @@ class Tournament:
 if __name__ == "__main__":
     # --- CONFIGURATION DU LANCEMENT ---
     # Liste des participants
-    ai_participants = ["Braindead", "Daft","SmartAI"] 
+    ai_participants = ["Braindead", "Daft","SmartAI","AssasinJack","PredictEinstein"] 
    
     
     scenarios = ["Scenario_Standard"]

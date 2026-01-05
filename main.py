@@ -13,6 +13,7 @@ TEAM_INFO = {
     "B": {"name": "Empire of the South", "color": "Rouge", "ia": "Captain BRAINDEAD (statique)"},
     "C": {"name": "Smart Alliance", "color": "Vert", "ia": "SmartAI (intelligente)"},
     "D": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
+    "E": {"name": "Soothsayers Scientists", "color": "Violet", "ia": "PredictEinstein (intelligente)"},
 }
 
 
