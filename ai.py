@@ -187,6 +187,8 @@ class PredictEinstein(BaseController):
             # Trouver l'ennemi avec le moin de tours a faire pour le tuer ( en 5 ou moin )
             target = None
             tours_necessaires_min = float("inf")
+            team = getattr(u, "team", None)
+            enemies = self.enemy_units_of(team)
             for e in enemies:
                 tours_necessaires = game.prediction(u , 5 , 1 , e , 0 , u.x , u.y)
                 if tours_necessaires < tours_necessaires_min : 
