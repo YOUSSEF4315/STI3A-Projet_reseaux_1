@@ -112,6 +112,22 @@ class Game:
                 best_target = e
         return best_target
 
+    def find_lowest_hp_ennemy(self, unit: Any) -> Optional[Any]:
+        """Renvoie l'ennemi vivant dans la portée de unit avec le moin de hp."""
+        team = getattr(unit, "team", None)
+        enemies = self.enemy_units_of(team)
+        if not enemies:
+            return None
+
+        best_target = None
+        lowest_hp = -1
+        for e in enemies:
+            d = self.map.distance(unit, e)
+            if d < lowest_hp:
+                lowest_hp = d
+                best_target = e
+        return best_target
+
     # ------------------------------------------------------------------
     # Boucle de jeu : un "pas" de simulation
     # ------------------------------------------------------------------
