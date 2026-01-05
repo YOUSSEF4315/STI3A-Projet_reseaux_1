@@ -134,18 +134,18 @@ class Game:
         dy = ennemi.y - y
         dist = math.hypot(dx, dy)
         if dist > unite.range : 
-            speed = float(getattr(unit, "speed", 1.0))
+            speed = float(getattr(unite, "speed", 1.0))
             dt: float = 1.0
             step = speed * dt
             ux = dx / dist
             uy = dy / dist
             new_x = x + ux * step
             new_y = y + uy * step
-            return prediction(unite , t , i+1 , ennemi , total_damage , new_x , new_y )
+            return self.prediction(unite , t , i+1 , ennemi , total_damage , new_x , new_y )
         total_damage += unite.attaquer(ennemi, dist)
         if total_damage >= ennemi.hp:
             return i
-        return prediction(unite , t , i+1 , ennemi , total_damage , x , y )
+        return self.prediction(unite , t , i+1 , ennemi , total_damage , x , y )
         
 
     # ------------------------------------------------------------------

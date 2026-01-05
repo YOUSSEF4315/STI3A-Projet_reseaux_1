@@ -3,7 +3,7 @@ from collections import defaultdict
 
 # --- IMPORTS ---
 
-from scenarios import scenario_small_terminal
+from scenarios import scenario_simple_vs_braindead
 from ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
 from smartAI import SmartAI
 
@@ -13,11 +13,11 @@ AVAILABLE_GENERALS = {
     "Daft": MajorDaft,
     "SmartAI": SmartAI,
     "AssasinJack": AssasinJack,
-    "PredictEinstein": PredictEinstein,
+    #"PredictEinstein": PredictEinstein,
 }
 
 AVAILABLE_SCENARIOS = {
-    "Scenario_Standard": scenario_small_terminal,
+    "Scenario_Standard": scenario_simple_vs_braindead,
 }
 
 # --- MOTEUR HEADLESS (Match Rapide) ---
@@ -215,7 +215,7 @@ class Tournament:
 if __name__ == "__main__":
     # --- CONFIGURATION DU LANCEMENT ---
     # Liste des participants
-    ai_participants = ["Braindead", "Daft","SmartAI","AssasinJack","PredictEinstein"] 
+    ai_participants = ["Braindead", "Daft","SmartAI","AssasinJack"] 
    
     
     scenarios = ["Scenario_Standard"]
