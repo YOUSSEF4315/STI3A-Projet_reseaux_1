@@ -3,7 +3,7 @@ from collections import defaultdict
 
 # --- IMPORTS ---
 
-from scenarios import scenario_simple_vs_braindead
+from scenarios import scenario_simple_vs_braindead,scenario_small_terminal
 from ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
 from smartAI import SmartAI
 
@@ -17,7 +17,8 @@ AVAILABLE_GENERALS = {
 }
 
 AVAILABLE_SCENARIOS = {
-    "Scenario_Standard": scenario_simple_vs_braindead,
+    "Scenario_Standard": scenario_small_terminal,
+    "Scenario_Dur": scenario_simple_vs_braindead,
 }
 
 # --- MOTEUR HEADLESS (Match Rapide) ---
@@ -218,7 +219,7 @@ if __name__ == "__main__":
     ai_participants = ["Braindead", "Daft","SmartAI","AssasinJack"] 
    
     
-    scenarios = ["Scenario_Standard"]
+    scenarios = ["Scenario_Standard","Scenario_Dur"]
     
     # 20 rounds = 10 allers + 10 retours pour chaque paire
     t = Tournament(ai_participants, scenarios, rounds=2)

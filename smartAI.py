@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import List, Any
-import math
 
 from game import Game
 from ai import BaseController
@@ -8,8 +7,10 @@ from ai import BaseController
 
 class SmartAI(BaseController):
     """
-    PROBLÈME : Les archers ne peuvent PAS kite les knights (trop lents)
-    SOLUTION : Formation défensive + Focus Fire INTELLIGENT
+    STRATÉGIE :
+    1. Crossbows focus les Pikemen puis autres crossbows
+    2. Pikemen chassent activement les Knights
+    3. Knights rush les Crossbows 
     """
 
     def __init__(self, team: str, decision_interval: float = 0.1):
@@ -28,97 +29,42 @@ class SmartAI(BaseController):
         my_pikemen = [u for u in my_units if u.__class__.__name__ == "Pikeman"]
         my_knights = [u for u in my_units if u.__class__.__name__ == "Knight"]
         
-        enemy_crossbows = [e for e in enemies if e.__class__.__name__ == "Crossbowman"]
-        enemy_pikemen = [e for e in enemies if e.__class__.__name__ == "Pikeman"]
-        enemy_knights = [e for e in enemies if e.__class__.__name__ == "Knight"]
+        # Comportement optimisé par type
+        for crossbow in my_crossbows:
+            self._crossbow_behavior(crossbow, enemies, game)
         
-        # STRATÉGIE DIFFÉRENTE selon la composition
-        if my_crossbows and enemy_knights:
-            # On a des archers vs des knights -> DANGER
-            self._anti_knight_strategy(my_crossbows, my_pikemen, my_knights, 
-                                      enemy_knights, enemies, game)
-        elif my_crossbows:
-            # On a des archers -> Focus fire sur cibles prioritaires
-            self._archer_focus_fire(my_crossbows, enemies, game)
+        for pikeman in my_pikemen:
+            self._pikeman_behavior(pikeman, enemies, game)
         
-        # Comportement des pikemen
-        for pike in my_pikemen:
-            self._pikeman_behavior(pike, enemy_knights, enemies, game)
-        
-        # Comportement des knights
         for knight in my_knights:
             self._knight_behavior(knight, enemies, game)
         
         return actions
     
-    def _anti_knight_strategy(self, my_crossbows, my_pikemen, my_knights,
-                             enemy_knights, all_enemies, game):
+    def _crossbow_behavior(self, crossbow, enemies, game):
+        """        
+        PRIORITÉS (basées sur efficacité de kill) :
+        1. Pikemen ennemis (8 dmg, tue en 7 coups) → BONUS +3
+        2. Crossbows ennemis (5 dmg, tue en 7 coups) → Duel rangé
+        3. Knights (4 dmg, tue en 25 coups) → Dernier recours
         """
-        Stratégie anti-knight :
-        1. Les pikemen BLOQUENT les knights (bonus +8 dmg vs knights)
-        2. Les crossbows tirent sur les knights depuis derrière
-        3. Formation serrée pour se protéger
-        """
-        if not my_crossbows:
-            return
-        
-        # Trouver le knight ennemi le plus proche de nos archers
-        closest_knight = None
-        min_dist = float("inf")
-        
-        for knight in enemy_knights:
-            avg_dist = sum(game.map.distance(cb, knight) for cb in my_crossbows) / len(my_crossbows)
-            if avg_dist < min_dist:
-                min_dist = avg_dist
-                closest_knight = knight
-        
-        if closest_knight is None:
-            closest_knight = enemy_knights[0] if enemy_knights else all_enemies[0]
-        
-        # TOUS les crossbows tirent sur le knight le plus proche
-        for cb in my_crossbows:
-            dist = game.map.distance(cb, closest_knight)
-            
-            if hasattr(cb, "in_range") and cb.in_range(dist):
-                # À portée -> TIRER
-                cb.intent = ("attack", closest_knight)
-            else:
-                # Hors portée -> Avancer LÉGÈREMENT (juste assez pour tirer)
-                if dist > 5.5:  # Un peu au-delà de la portée
-                    target_x = float(getattr(closest_knight, "x", 0.0))
-                    target_y = float(getattr(closest_knight, "y", 0.0))
-                    cb.intent = ("move_to", target_x, target_y)
-                else:
-                    # Rester en position et attendre la portée
-                    cb.intent = ("attack", closest_knight)
-    
-    def _archer_focus_fire(self, archers, enemies, game):
-        """
-        Focus fire intelligent pour les archers :
-        1. Priorité aux archers ennemis (1v1 archer)
-        2. Puis pikemen (faciles à tuer)
-        3. Enfin knights (tanks)
-        """
-        # Trouver la meilleure cible
-        target = self._choose_archer_target(archers, enemies, game)
+        target = self._choose_crossbow_target(crossbow, enemies, game)
         
         if target is None:
             return
         
-        # TOUS les archers tirent sur cette cible
-        for archer in archers:
-            dist = game.map.distance(archer, target)
-            
-            if hasattr(archer, "in_range") and archer.in_range(dist):
-                archer.intent = ("attack", target)
-            else:
-                # Avancer pour tirer
-                target_x = float(getattr(target, "x", 0.0))
-                target_y = float(getattr(target, "y", 0.0))
-                archer.intent = ("move_to", target_x, target_y)
+        dist = game.map.distance(crossbow, target)
+        cb_range = float(getattr(crossbow, "range", 5.0))
+        
+        if dist <= cb_range:
+            crossbow.intent = ("attack", target)
+        else:
+            target_x = float(getattr(target, "x", 0.0))
+            target_y = float(getattr(target, "y", 0.0))
+            crossbow.intent = ("move_to", target_x, target_y)
     
-    def _choose_archer_target(self, my_archers, enemies, game):
-        """Choisit la meilleure cible pour les archers"""
+    def _choose_crossbow_target(self, crossbow, enemies, game):
+        
         if not enemies:
             return None
         
@@ -128,32 +74,49 @@ class SmartAI(BaseController):
         for enemy in enemies:
             score = 0.0
             hp = float(getattr(enemy, "hp", 100))
-            max_hp = 100.0  # Approximation
-            
             enemy_type = enemy.__class__.__name__
+            dist = game.map.distance(crossbow, enemy)
             
-            # PRIORITÉ 1 : Archers ennemis (menace directe)
-            if enemy_type == "Crossbowman":
-                score += 150
-            
-            # PRIORITÉ 2 : Ennemis à faible HP (finition)
-            hp_ratio = hp / max_hp
-            if hp_ratio < 0.3:
-                score += 100
-            elif hp_ratio < 0.5:
-                score += 60
-            
-            # PRIORITÉ 3 : Pikemen (faciles, pas de armor pierce)
+            # PRIORITÉ 1 : Pikemen 
             if enemy_type == "Pikeman":
+                score += 200
+                
+                if hp <= 16:  # 2 hits to kill
+                    score += 150
+                elif hp <= 24:  # 3 hits
+                    score += 100
+                elif hp <= 32:  # 4 hits
+                    score += 50
+            
+            # PRIORITÉ 2 : Crossbows 
+            elif enemy_type == "Crossbowman":
+                score += 180
+                # Finition rapide (fragiles, 35 HP)
+                if hp <= 10:  # 2 hits
+                    score += 120
+                elif hp <= 15:  # 3 hits
+                    score += 80
+                elif hp <= 20:  # 4 hits
+                    score += 40
+            
+            # PRIORITÉ 3 : Knights 
+            elif enemy_type == "Knight":
+                score += 50
+                # Bonus si déjà très blessé
+                if hp <= 20:  # Presque mort
+                    score += 100
+                elif hp <= 40:
+                    score += 50
+            
+            # Bonus de proximité (important pour crossbow, range 5)
+            if dist <= 5.0:  # À portée
+                score += 80
+            elif dist <= 8.0:
                 score += 40
-            
-            # PRIORITÉ 4 : Knights en dernier (tanks)
-            if enemy_type == "Knight":
-                score += 10
-            
-            # Bonus proximité
-            avg_dist = sum(game.map.distance(a, enemy) for a in my_archers) / len(my_archers)
-            score += max(0, 30 - avg_dist * 2)
+            elif dist <= 12.0:
+                score += 20
+            else:
+                score -= 10  # Pénalité si trop loin
             
             if score > best_score:
                 best_score = score
@@ -161,48 +124,164 @@ class SmartAI(BaseController):
         
         return best_target
     
-    def _pikeman_behavior(self, pike, enemy_knights, all_enemies, game):
+    def _pikeman_behavior(self, pikeman, enemies, game):
         """
-        Pikemen = ANTI-KNIGHTS (+8 dmg bonus)
-        Ils doivent BLOQUER et TUER les knights
+        Pikeman 
+        PRIORITÉS :
+        1. Knights (10 dmg, tue en 10 coups) 
+        2. Autres cibles (4 dmg seulement)
         """
-        # Si des knights ennemis existent, les cibler en priorité
-        if enemy_knights:
-            target = min(enemy_knights, key=lambda k: game.map.distance(pike, k))
-        else:
-            # Sinon, cible la plus proche
-            target = min(all_enemies, key=lambda e: game.map.distance(pike, e))
+        target = self._choose_pikeman_target(pikeman, enemies, game)
         
-        dist = game.map.distance(pike, target)
+        if target is None:
+            return
         
-        if hasattr(pike, "in_range") and pike.in_range(dist):
-            pike.intent = ("attack", target)
+        dist = game.map.distance(pikeman, target)
+        pike_range = float(getattr(pikeman, "range", 1.0))
+        
+        if dist <= pike_range:
+            pikeman.intent = ("attack", target)
         else:
             target_x = float(getattr(target, "x", 0.0))
             target_y = float(getattr(target, "y", 0.0))
-            pike.intent = ("move_to", target_x, target_y)
+            pikeman.intent = ("move_to", target_x, target_y)
+    
+    def _choose_pikeman_target(self, pikeman, enemies, game):
+        """
+        Pikeman = spécialiste anti-Knight
+        """
+        if not enemies:
+            return None
+        
+        best_target = None
+        best_score = -float("inf")
+        
+        for enemy in enemies:
+            score = 0.0
+            hp = float(getattr(enemy, "hp", 100))
+            enemy_type = enemy.__class__.__name__
+            dist = game.map.distance(pikeman, enemy)
+            
+            # PRIORITÉ ABSOLUE : Knights 
+            if enemy_type == "Knight":
+                score += 300  # Priorité maximale
+                # Finition selon HP
+                if hp <= 20:  # 2 hits
+                    score += 150
+                elif hp <= 40:  # 4 hits
+                    score += 100
+                elif hp <= 60:  # 6 hits
+                    score += 60
+            
+            # PRIORITÉ 2 : Crossbows 
+            elif enemy_type == "Crossbowman":
+                score += 80
+                if hp <= 12:  # 3 hits
+                    score += 80
+                elif hp <= 20:
+                    score += 40
+            
+            # PRIORITÉ 3 : Pikemen 
+            elif enemy_type == "Pikeman":
+                score += 40
+                if hp <= 16:  # 4 hits
+                    score += 60
+            
+            # Bonus de proximité 
+            if dist <= 1.0:  # À portée melee
+                score += 100
+            elif dist <= 3.0:
+                score += 60
+            elif dist <= 5.0:
+                score += 30
+            else:
+                score += max(0, 20 - dist * 2)
+            
+            if score > best_score:
+                best_score = score
+                best_target = enemy
+        
+        return best_target
     
     def _knight_behavior(self, knight, enemies, game):
         """
-        Knights = RUSH
-        Foncent sur la cible la plus dangereuse
-        """
-        # Priorité : archers > pikemen > knights
-        target = None
+        Knight 
         
-        # Chercher des archers ennemis
-        enemy_archers = [e for e in enemies if e.__class__.__name__ == "Crossbowman"]
-        if enemy_archers:
-            target = min(enemy_archers, key=lambda a: game.map.distance(knight, a))
-        else:
-            # Sinon plus proche
-            target = min(enemies, key=lambda e: game.map.distance(knight, e))
+        PRIORITÉS :
+        1. Crossbows 
+        2. Pikemen 
+        3. Knights 
+        """
+        target = self._choose_knight_target(knight, enemies, game)
+        
+        if target is None:
+            return
         
         dist = game.map.distance(knight, target)
+        knight_range = float(getattr(knight, "range", 1.0))
         
-        if hasattr(knight, "in_range") and knight.in_range(dist):
+        if dist <= knight_range:
             knight.intent = ("attack", target)
         else:
             target_x = float(getattr(target, "x", 0.0))
             target_y = float(getattr(target, "y", 0.0))
             knight.intent = ("move_to", target_x, target_y)
+    
+    def _choose_knight_target(self, knight, enemies, game):
+        """
+        Knight =  éviter pikemen si possible
+        """
+        if not enemies:
+            return None
+        
+        best_target = None
+        best_score = -float("inf")
+        
+        for enemy in enemies:
+            score = 0.0
+            hp = float(getattr(enemy, "hp", 100))
+            enemy_type = enemy.__class__.__name__
+            dist = game.map.distance(knight, enemy)
+            
+            # PRIORITÉ 1 : Crossbows 
+            if enemy_type == "Crossbowman":
+                score += 250
+                if hp <= 16:  # 2 hits
+                    score += 150
+                elif hp <= 24:  # 3 hits
+                    score += 100
+            
+            # PRIORITÉ 2 : Knights 
+            elif enemy_type == "Knight":
+                score += 80
+                if hp <= 30:  # Presque mort
+                    score += 100
+                elif hp <= 50:
+                    score += 50
+            
+            # PRIORITÉ 3 : Pikemen 
+            elif enemy_type == "Pikeman":
+                score += 30  # Bas score de base
+                # Seulement si très blessé ou pas d'autre choix
+                if hp <= 16:  # 2 hits, finition acceptable
+                    score += 120
+                elif hp <= 32:  # 4 hits
+                    score += 60
+                else:
+                    score -= 30  # Pénalité si full HP
+            
+            # Bonus de proximité 
+            if dist <= 1.0:  # À portée melee
+                score += 100
+            elif dist <= 4.0:
+                score += 60
+            elif dist <= 8.0:
+                score += 30
+            else:
+                score += max(0, 20 - dist)
+            
+            if score > best_score:
+                best_score = score
+                best_target = enemy
+        
+        return best_target
