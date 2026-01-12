@@ -189,11 +189,37 @@ class PredictEinstein(BaseController):
             tours_necessaires_min = float("inf")
             team = getattr(u, "team", None)
             enemies = game.enemy_units_of(team)
+            x = u.x
+            y = u.y
             for e in enemies:
-                tours_necessaires = game.prediction(u , 5 , 1 , e , 0 , u.x , u.y)
-                if tours_necessaires < tours_necessaires_min : 
-                    tours_necessaires_min = tours_necessaires
-                    target = e
+                i=0
+                total_damage=0
+                while i<5:
+                    i=i+1
+                    """Renvoie le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer 5 tours."""
+                    dx = e.x - x
+                    dy = e.y - y
+                    dist = (dy**2 + dx**2)**0.5
+                    if dist > u.range : 
+                        speed = u.speed
+                        dt = 1.0
+                        step = speed * dt
+                        if step >= dist:
+                            x = e.x
+                            y = e.y
+                        else:
+                            ux = dx / dist
+                            uy = dy / dist
+                            x = x + ux * step
+                            y = y + uy * step
+                        continue
+                    total_damage += u.calculer_degats(e,1)
+                    if total_damage >= e.hp:
+                        if i<tours_necessaires_min:
+                            tours_necessaires_min = i
+                            target = e
+                        break
+                    continue
                     
             if target is None:
                 # Trouver l'ennemi le plus proche
