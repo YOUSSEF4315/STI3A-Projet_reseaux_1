@@ -8,13 +8,38 @@ class BattleMap:
     La grille ne sert QUE pour l'affichage (approximation).
     """
 
-    def __init__(self, rows=120, cols=120):
+    def __init__(self, rows=120, cols=120, elevation_map=None):
         self.rows = rows
         self.cols = cols
+        # elevation_map peut être une fonction (x, y) -> elevation ou None
+        self.elevation_map = elevation_map
 
     def in_bounds(self, x, y):
         """Vérifie que (x, y) est dans la carte."""
         return 0.0 <= x < self.cols and 0.0 <= y < self.rows
+
+    def get_elevation(self, x, y):
+        """
+        Retourne l'élévation à la position (x, y).
+        Par défaut : terrain plat (elevation = 0)
+        """
+        if self.elevation_map is None:
+            return 0.0
+
+        # Si elevation_map est une fonction
+        if callable(self.elevation_map):
+            return float(self.elevation_map(x, y))
+
+        # Si elevation_map est un dict ou une grille
+        try:
+            ix = int(round(x))
+            iy = int(round(y))
+            if hasattr(self.elevation_map, '__getitem__'):
+                return float(self.elevation_map.get((ix, iy), 0.0))
+        except:
+            return 0.0
+
+        return 0.0
 
     def place_unit(self, unit, row, col):
         """

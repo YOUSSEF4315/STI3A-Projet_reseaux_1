@@ -7,6 +7,8 @@ class Guerrier(ABC):
                  speed, buildTime, reloadTime, cooldown=0, x=0.0, y=0.0, **kwargs):
         # Stats de base
         self.hp = float(hp)
+        self.max_hp = float(hp)
+        self.max_hp = float(hp)
         self.attaque = float(attaque)
         self.armor = float(armor)
         self.pierceArmor = float(pierceArmor)
@@ -71,14 +73,53 @@ class Guerrier(ABC):
         target.hp = max(0.0, float(target.hp) - real)
         return real
 
-    
+    def get_attack_components(self, target):
+        """
+        Retourne les composantes d'attaque sous forme de liste de tuples :
+        [(attack_value, armor_type), ...]
 
-    # --- Méthodes à spécialiser ---
+        armor_type peut être 'armor' ou 'pierceArmor'
 
-    @abstractmethod
+        À surcharger dans les sous-classes pour définir les attaques spécifiques.
+        Par défaut, utilise l'attribut 'attaque' contre 'armor'.
+        """
+        base_attack = float(getattr(self, 'attaque', 0))
+        if base_attack > 0:
+            return [(base_attack, 'armor')]
+        return []
+
     def calculer_degats(self, cible, k_elev: float = 1.0) -> float:
-        ...
+        """
+        Calcule les dégâts selon la formule du PDF :
+        Damage = max(1, k_elev × Σ max(0, Attack_i - Armor_i))
 
-    @abstractmethod
+        La sommation (Σ) parcourt toutes les composantes d'attaque.
+        """
+        components = self.get_attack_components(cible)
+
+        total_damage = 0.0
+        for attack_value, armor_type in components:
+            # Récupérer l'armure correspondante de la cible
+            target_armor = float(getattr(cible, armor_type, 0))
+
+            # Calculer la contribution de cette attaque
+            damage_component = max(0.0, float(attack_value) - target_armor)
+            total_damage += damage_component
+
+        # Appliquer k_elev et garantir au moins 1 dégât
+        final_damage = max(1.0, float(k_elev) * total_damage)
+        return round(final_damage, 2)
+
     def attaquer(self, target, distance, k_elev: float = 1.0):
-        ...
+        """
+        Attaque standard : vérifie les conditions, calcule et applique les dégâts.
+        Peut être surchargée pour des comportements spéciaux (ex: accuracy).
+        """
+        ok, _ = self.can_strike(distance, target)
+        if not ok:
+            return 0
+
+        dmg = self.calculer_degats(target, k_elev)
+        self.apply_damage(target, dmg)
+        self.start_cooldown()
+        return dmg

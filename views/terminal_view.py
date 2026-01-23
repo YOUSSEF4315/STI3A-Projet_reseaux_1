@@ -201,12 +201,147 @@ class TerminalView:
         self.stdscr.getch()
 
     def generate_html_snapshot(self):
+        """
+        Génère un snapshot HTML complet avec:
+        - Informations des unités (HP, position, intent)
+        - État des IA/contrôleurs
+        - Sections repliables par équipe
+        """
         filename = "snapshot_terminal.html"
-        html = "<html><body><h1>Snapshot</h1><table border='1'><tr><th>ID</th><th>Type</th><th>Team</th><th>HP</th><th>Pos</th></tr>"
+        
+        # Helper pour formater l'intent
+        def format_intent(u):
+            intent = getattr(u, 'intent', None)
+            if intent is None:
+                return "<em>aucun</em>"
+            kind = intent[0]
+            if kind == "move_to":
+                _, tx, ty = intent
+                return f"Déplacement vers ({tx:.1f}, {ty:.1f})"
+            if kind == "attack":
+                _, target = intent
+                if target is None or not hasattr(target, 'hp'):
+                    return "Attaque (cible morte)"
+                return f"Attaque {type(target).__name__} (HP:{target.hp:.0f})"
+            return str(kind)
+        
+        # Grouper les unités par équipe
+        units_by_team = {'A': [], 'B': []}
         for u in self.game.alive_units():
-            color = "blue" if getattr(u, 'team', '?') == 'A' else "red"
-            html += f"<tr style='color:{color}'><td>{id(u)}</td><td>{type(u).__name__}</td><td>{getattr(u, 'team', '?')}</td><td>{getattr(u, 'hp', 0):.1f}</td><td>({u.x:.1f}, {u.y:.1f})</td></tr>"
-        html += "</table></body></html>"
-        with open(filename, "w") as f: f.write(html)
-        try: webbrowser.open(filename)
-        except: pass
+            team = getattr(u, 'team', '?')
+            if team in units_by_team:
+                units_by_team[team].append(u)
+        
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Snapshot - Temps {self.game.time:.1f}s</title>
+    <style>
+        body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }}
+        h1 {{ color: #00d9ff; border-bottom: 2px solid #00d9ff; }}
+        h2 {{ cursor: pointer; padding: 10px; margin: 0; }}
+        h2:hover {{ background: #333; }}
+        .team-a {{ background: #0a3d62; }}
+        .team-b {{ background: #78281F; }}
+        .section {{ margin-bottom: 20px; border-radius: 8px; overflow: hidden; }}
+        .content {{ padding: 10px; background: #16213e; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #333; }}
+        th {{ background: #0f3460; }}
+        .hp-bar {{ width: 100px; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }}
+        .hp-fill {{ height: 100%; background: linear-gradient(90deg, #00ff88, #00cc66); }}
+        .intent {{ font-style: italic; color: #aaa; }}
+        .ai-state {{ background: #2d3436; padding: 15px; border-radius: 8px; margin-bottom: 20px; }}
+        .collapsed .content {{ display: none; }}
+    </style>
+    <script>
+        function toggle(id) {{
+            document.getElementById(id).classList.toggle('collapsed');
+        }}
+    </script>
+</head>
+<body>
+    <h1>⚔️ Snapshot de Bataille - Temps: {self.game.time:.1f}s</h1>
+    <p>Unités en vie: {len(self.game.alive_units())} | 
+       Équipe A: {len(units_by_team['A'])} | 
+       Équipe B: {len(units_by_team['B'])}</p>
+    
+    <div class="ai-state">
+        <h3>🤖 État des Généraux (IA)</h3>
+        <table>
+            <tr><th>Équipe</th><th>Type IA</th><th>Intervalle décision</th></tr>
+"""
+        
+        # Afficher l'état des contrôleurs
+        for team, controller in self.game.controllers.items():
+            ai_type = type(controller).__name__
+            interval = getattr(controller, 'decision_interval', '?')
+            color = "#00d9ff" if team == "A" else "#ff6b6b"
+            html += f'<tr><td style="color:{color}">Équipe {team}</td><td>{ai_type}</td><td>{interval}s</td></tr>'
+        
+        html += """
+        </table>
+    </div>
+"""
+        
+        # Sections par équipe
+        for team, units in units_by_team.items():
+            team_class = "team-a" if team == "A" else "team-b"
+            team_name = "Équipe A (Bleu)" if team == "A" else "Équipe B (Rouge)"
+            
+            html += f"""
+    <div id="section-{team}" class="section">
+        <h2 class="{team_class}" onclick="toggle('section-{team}')">
+            📋 {team_name} - {len(units)} unités (cliquer pour replier)
+        </h2>
+        <div class="content">
+            <table>
+                <tr>
+                    <th>Type</th>
+                    <th>HP</th>
+                    <th>Position</th>
+                    <th>Vitesse</th>
+                    <th>Cooldown</th>
+                    <th>Intent (Ordre actuel)</th>
+                </tr>
+"""
+            for u in sorted(units, key=lambda x: type(x).__name__):
+                hp = getattr(u, 'hp', 0)
+                max_hp = 100  # Approximation
+                hp_pct = min(100, (hp / max_hp) * 100)
+                
+                html += f"""
+                <tr>
+                    <td><strong>{type(u).__name__}</strong></td>
+                    <td>
+                        <div class="hp-bar">
+                            <div class="hp-fill" style="width:{hp_pct}%"></div>
+                        </div>
+                        {hp:.0f}
+                    </td>
+                    <td>({u.x:.1f}, {u.y:.1f})</td>
+                    <td>{getattr(u, 'speed', '?')}</td>
+                    <td>{getattr(u, 'cooldown', 0):.1f}s</td>
+                    <td class="intent">{format_intent(u)}</td>
+                </tr>
+"""
+            
+            html += """
+            </table>
+        </div>
+    </div>
+"""
+        
+        html += """
+</body>
+</html>
+"""
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(html)
+        
+        try:
+            webbrowser.open(filename)
+        except:
+            pass

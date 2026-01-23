@@ -137,8 +137,42 @@ class AssasinJack(BaseController):
         my_units = game.alive_units_of_team(self.team)
 
         for u in my_units:
-            # Trouver l'ennemi avec le moin de hp
-            target = game.find_lowest_hp_ennemy(u)
+            # 1. Chercher d'abord les ennemis faibles À PROXIMITÉ
+            # On récupère tous les ennemis
+            enemies = game.enemy_units_of(self.team)
+            if not enemies:
+                continue
+
+            target = None
+            best_score = float("inf") # On cherche le plus petit score (HP)
+            
+            # Paramètres
+            MAX_CHASE_DIST = 15.0  # Ne pas chasser les faibles trop loin
+            
+            # On regarde les ennemis proches d'abord
+            closest_enemy = None
+            closest_dist = float("inf")
+
+            for e in enemies:
+                d = game.map.distance(u, e)
+                hp = float(getattr(e, "hp", 100))
+                
+                # Garder trace du plus proche absolu (fallback)
+                if d < closest_dist:
+                    closest_dist = d
+                    closest_enemy = e
+
+                # Si l'ennemi est raisonnablement proche, on considère ses HP
+                if d < MAX_CHASE_DIST:
+                    # Score = HP (on veut le min)
+                    if hp < best_score:
+                        best_score = hp
+                        target = e
+            
+            # Si aucun ennemi faible à portée, on se rabat sur le plus proche (Survie !)
+            if target is None:
+                target = closest_enemy
+
             if target is None:
                 continue
 
@@ -154,8 +188,6 @@ class AssasinJack(BaseController):
             target_x = float(getattr(target, "x", 0.0))
             target_y = float(getattr(target, "y", 0.0))
             u.intent = ("move_to", target_x, target_y)
-
-
 
         return actions
 
@@ -189,18 +221,19 @@ class PredictEinstein(BaseController):
             tours_necessaires_min = float("inf")
             team = getattr(u, "team", None)
             enemies = game.enemy_units_of(team)
-            x = u.x
-            y = u.y
             for e in enemies:
-                i=0
-                total_damage=0
-                while i<1:
-                    i=i+1
+                # Réinitialiser la position simulée pour chaque ennemi testé
+                x = u.x
+                y = u.y
+                i = 0
+                total_damage = 0
+                while i < 5:
+                    i = i + 1
                     """Renvoie le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer 5 tours."""
                     dx = e.x - x
                     dy = e.y - y
                     dist = (dy**2 + dx**2)**0.5
-                    if dist > u.range : 
+                    if dist > u.range :
                         speed = u.speed
                         dt = 1.0
                         step = speed * dt
@@ -215,7 +248,7 @@ class PredictEinstein(BaseController):
                         continue
                     total_damage += u.calculer_degats(e,1)
                     if total_damage >= e.hp:
-                        if i<tours_necessaires_min:
+                        if i < tours_necessaires_min:
                             tours_necessaires_min = i
                             target = e
                         break

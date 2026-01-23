@@ -5,13 +5,13 @@ from collections import defaultdict
 
 from scenarios import scenario_simple_vs_braindead,scenario_small_terminal
 from ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
-from smartAI import SmartAI
+from smartAI import GeneralStrategus
 
 # --- CONFIGURATION ---
 AVAILABLE_GENERALS = {
     "Braindead": CaptainBraindead,
     "Daft": MajorDaft,
-    "SmartAI": SmartAI,
+    "GeneralStrategus": GeneralStrategus,
     "AssasinJack": AssasinJack,
     #"PredictEinstein": PredictEinstein,
 }
@@ -31,7 +31,7 @@ def run_headless_match(scenario_func, ai_class_A, ai_class_B, max_ticks=2000):
     ticks = 0
     # Boucle rapide sans affichage
     while not game.is_finished() and ticks < max_ticks:
-        game.step(dt=0.5) 
+        game.step(dt=0.2) 
         ticks += 1
         
     winner = game.get_winner()
@@ -216,7 +216,7 @@ class Tournament:
 if __name__ == "__main__":
     # --- CONFIGURATION DU LANCEMENT ---
     # Liste des participants
-    ai_participants = ["Braindead", "Daft","SmartAI","AssasinJack"] 
+    ai_participants = ["Braindead", "Daft", "GeneralStrategus", "AssasinJack"] 
    
     
     scenarios = ["Scenario_Standard","Scenario_Dur"]

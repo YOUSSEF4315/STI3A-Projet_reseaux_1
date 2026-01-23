@@ -5,13 +5,13 @@ import time
 
 from game import Game
 from scenarios import scenario_simple_vs_braindead  # on importe notre scénario
-from smartAI import SmartAI
+from smartAI import GeneralStrategus
 
 
 TEAM_INFO = {
     "A": {"name": "Kingdom of the North", "color": "Bleu", "ia": "MajorDaft (agressive)"},
     "B": {"name": "Empire of the South", "color": "Rouge", "ia": "Captain BRAINDEAD (statique)"},
-    "C": {"name": "Smart Alliance", "color": "Vert", "ia": "SmartAI (intelligente)"},
+    "C": {"name": "Smart Alliance", "color": "Vert", "ia": "GeneralStrategus (intelligente)"},
     "D": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
     "E": {"name": "Soothsayers Scientists", "color": "Violet", "ia": "PredictEinstein (intelligente)"},
 }

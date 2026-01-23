@@ -115,23 +115,42 @@ class GUI:
         if event.type == pygame.VIDEORESIZE:
             self.screen_w, self.screen_h = event.w, event.h
 
-        # Zoom (Molette Scroll)
+        # Zoom (Molette Scroll) - Centré sur la position de la souris
         elif event.type == pygame.MOUSEWHEEL:
+            # Obtenir la position de la souris
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+
+            # Calculer la position "monde" avant le zoom
+            old_zoom = self.zoom
+            world_x = (mouse_x - self.camera_x) / old_zoom
+            world_y = (mouse_y - self.camera_y) / old_zoom
+
+            # Appliquer le nouveau zoom
             if event.y > 0:
                 self.zoom = min(self.max_zoom, self.zoom + 0.1)
             elif event.y < 0:
                 self.zoom = max(self.min_zoom, self.zoom - 0.1)
 
+            # Ajuster la caméra pour que le point sous la souris reste au même endroit
+            self.camera_x = mouse_x - world_x * self.zoom
+            self.camera_y = mouse_y - world_y * self.zoom
+
         # DÉBUT DU CLIC (Appui)
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            # 3 = Clic Droit, 2 = Clic Molette (Bouton du milieu)
-            if event.button == 3 or event.button == 2:
-                self.is_dragging = True
-                pygame.mouse.get_rel() # Important : On remet le compteur de mouvement à zéro ici !
+            mx, my = pygame.mouse.get_pos()
+            # Clic gauche (1), Clic molette (2), Clic droit (3)
+            # On autorise le drag pour tous SAUF si clic gauche sur la minimap
+            if event.button in [1, 2, 3]:
+                # Si c'est un clic gauche ET qu'on clique sur la minimap, on ne démarre pas le drag
+                if event.button == 1 and self._is_click_on_minimap(mx, my):
+                    pass  # La minimap gérera le clic dans handle_input
+                else:
+                    self.is_dragging = True
+                    pygame.mouse.get_rel()  # Important : On remet le compteur de mouvement à zéro ici !
 
         # FIN DU CLIC (Relâchement)
         elif event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 3 or event.button == 2:
+            if event.button in [1, 2, 3]:
                 self.is_dragging = False
 
     # --- 2. GESTION CONTINUE (BOUCLE) ---
@@ -188,19 +207,41 @@ class GUI:
                 print("📂 Chargé")
             except Exception as e: print(f"Erreur Load: {e}")
 
+    def _is_click_on_minimap(self, mx, my):
+        """Vérifie si un clic est sur la minimap"""
+        if not self.map or not self.show_minimap or not self.show_ui_master:
+            return False
+        max_rows = getattr(self.map, 'rows', 120)
+        max_cols = getattr(self.map, 'cols', 120)
+        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2
+        base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
+        scale = MINIMAP_WIDTH / base_iso_w
+        mini_height = base_iso_h * scale
+        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN
+        rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
+        return rect_x <= mx <= rect_x + MINIMAP_WIDTH and rect_y <= my <= rect_y + mini_height
+
     def _handle_minimap_click(self):
         if not self.map: return
         mx, my = pygame.mouse.get_pos()
-        max_rows = getattr(self.map, 'rows', 120); max_cols = getattr(self.map, 'cols', 120)
-        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2; base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
-        scale = MINIMAP_WIDTH / base_iso_w; mini_height = base_iso_h * scale
-        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN; rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
-        
-        if rect_x <= mx <= rect_x + MINIMAP_WIDTH and rect_y <= my <= rect_y + mini_height:
-            rel_x = mx - rect_x; rel_y = my - rect_y
+
+        if self._is_click_on_minimap(mx, my):
+            max_rows = getattr(self.map, 'rows', 120)
+            max_cols = getattr(self.map, 'cols', 120)
+            base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2
+            base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
+            scale = MINIMAP_WIDTH / base_iso_w
+            mini_height = base_iso_h * scale
+            rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN
+            rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
+
+            rel_x = mx - rect_x
+            rel_y = my - rect_y
             offset_x_world = max_rows * TILE_WIDTH / 2
-            world_x = (rel_x / scale) - offset_x_world; world_y = rel_y / scale
-            self.camera_x = (self.screen_w // 2) - world_x; self.camera_y = (self.screen_h // 2) - world_y
+            world_x = (rel_x / scale) - offset_x_world
+            world_y = rel_y / scale
+            self.camera_x = (self.screen_w // 2) - world_x
+            self.camera_y = (self.screen_h // 2) - world_y
 
     def draw_minimap(self, screen):
         if not self.show_minimap or not self.map or not self.show_ui_master: return
@@ -267,17 +308,31 @@ class GUI:
             team = getattr(u, 'team', '?'); u_type = type(u).__name__
             if team not in counts: counts[team] = {}
             counts[team][u_type] = counts[team].get(u_type, 0) + 1; totals[team] += 1
-        if self.show_panel_a: self._draw_single_panel(screen, "Équipe A", counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
-        if self.show_panel_b: self._draw_single_panel(screen, "Équipe B", counts.get('B', {}), totals.get('B', 0), self.screen_w - 220, 20, COLOR_TEAM_B)
 
-    def _draw_single_panel(self, screen, title, data, total, x, y, color):
-        h = 35
+        # Récupérer les noms des IA
+        ai_name_a = type(self.game.controllers.get('A')).__name__ if 'A' in self.game.controllers else "?"
+        ai_name_b = type(self.game.controllers.get('B')).__name__ if 'B' in self.game.controllers else "?"
+
+        if self.show_panel_a: self._draw_single_panel(screen, "Équipe A", ai_name_a, counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
+        if self.show_panel_b: self._draw_single_panel(screen, "Équipe B", ai_name_b, counts.get('B', {}), totals.get('B', 0), self.screen_w - 220, 20, COLOR_TEAM_B)
+
+    def _draw_single_panel(self, screen, title, ai_name, data, total, x, y, color):
+        # Hauteur de base : titre (18px) + IA (16px) + padding
+        h = 50
         if self.show_details: h += len(data) * 20 + 5
         s = pygame.Surface((200, h), pygame.SRCALPHA); s.fill(COLOR_PANEL_BG); screen.blit(s, (x, y))
         pygame.draw.rect(screen, color, (x, y, 4, h))
-        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT); screen.blit(title_surf, (x + 10, y + 8))
+
+        # Titre principal
+        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT)
+        screen.blit(title_surf, (x + 10, y + 8))
+
+        # Nom de l'IA (plus petit, en gris)
+        ai_surf = self.font_ui.render(f"IA: {ai_name}", True, (180, 180, 180))
+        screen.blit(ai_surf, (x + 10, y + 26))
+
         if self.show_details:
-            y_off = 35
+            y_off = 50
             for u_type, count in sorted(data.items()):
                 icon = self.assets.get(u_type.lower())
                 txt_x = x + 10
@@ -313,9 +368,23 @@ class GUI:
                     pygame.draw.ellipse(screen, COLOR_TEAM_A if team == "A" else COLOR_TEAM_B, (screen_x + (tw//2) - ellipse_w//2, screen_y + (th//2) - ellipse_h//2, ellipse_w, ellipse_h))
                     screen.blit(scaled_img, (draw_x, draw_y))
                     hp = getattr(unit, 'hp', 0)
+                    max_hp = getattr(unit, 'max_hp', hp)
+                    
                     if hp > 0:
-                        bar_w = int(40 * self.zoom); bar_h = int(4 * self.zoom); life_w = min(bar_w, max(0, int(hp / 2.5 * self.zoom)))
+                        bar_w = int(40 * self.zoom)
+                        bar_h = int(4 * self.zoom)
+                        
+                        # Largeur calculée par rapport au MAX HP (toujours 100% visuellement si full life)
+                        ratio = hp / max_hp if max_hp > 0 else 0
+                        life_w = int(ratio * bar_w)
+                        
+                        # Fond noir
                         pygame.draw.rect(screen, (0,0,0), (draw_x, draw_y - bar_h - 2, bar_w, bar_h))
-                        pygame.draw.rect(screen, (0, 255, 0), (draw_x, draw_y - bar_h - 2, life_w, bar_h))
+                        
+                        # Barre de vie (Verte, ou Rouge si critique)
+                        color = (0, 255, 0)
+                        if ratio < 0.3: color = (255, 0, 0)
+                        
+                        pygame.draw.rect(screen, color, (draw_x, draw_y - bar_h - 2, life_w, bar_h))
         self.draw_minimap(screen)
         self.draw_army_stats(screen)

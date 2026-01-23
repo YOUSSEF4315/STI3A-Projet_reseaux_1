@@ -5,7 +5,7 @@ from game import Game
 from ai import BaseController
 
 
-class SmartAI(BaseController):
+class GeneralStrategus(BaseController):
     """
     STRATÉGIE :
     1. Crossbows focus les Pikemen puis autres crossbows

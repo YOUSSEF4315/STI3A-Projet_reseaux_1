@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Logs & outputs
+battle_attacks.txt
+*.pkl
+*.png
+*.html
+
+# IDE / tools
+.claude/
+
+# Perso / notes
+*.pdf
+resume.txt

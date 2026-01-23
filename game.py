@@ -113,7 +113,7 @@ class Game:
         return best_target
 
     def find_lowest_hp_ennemy(self, unit: Any) -> Optional[Any]:
-        """Renvoie l'ennemi vivant dans la portée de unit avec le moin de hp."""
+        """Renvoie l'ennemi vivant avec le moins de hp."""
         team = getattr(unit, "team", None)
         enemies = self.enemy_units_of(team)
         if not enemies:
@@ -122,9 +122,9 @@ class Game:
         best_target = None
         lowest_hp = float("inf")
         for e in enemies:
-            d = self.map.distance(unit, e)
-            if d < lowest_hp:
-                lowest_hp = d
+            hp = float(getattr(e, "hp", 0))
+            if hp < lowest_hp:
+                lowest_hp = hp
                 best_target = e
         return best_target
         
@@ -253,10 +253,20 @@ class Game:
 
         dist = self.map.distance(attacker, target)
 
+        # Calcul de k_elev basé sur l'élévation
+        elev_att = self.map.get_elevation(attacker.x, attacker.y)
+        elev_tgt = self.map.get_elevation(target.x, target.y)
+        elev_diff = elev_att - elev_tgt
+
+        # k_elev = 1.0 + 5% par niveau d'élévation (peut être ajusté)
+        k_elev = 1.0 + 0.05 * elev_diff
+        # On limite k_elev pour éviter des valeurs extrêmes
+        k_elev = max(0.5, min(2.0, k_elev))
+
         # HP avant attaque
         hp_before = float(getattr(target, "hp", 0.0))
 
-        dmg = attacker.attaquer(target, dist)
+        dmg = attacker.attaquer(target, dist, k_elev)
 
         # HP après attaque
         hp_after = float(getattr(target, "hp", 0.0))

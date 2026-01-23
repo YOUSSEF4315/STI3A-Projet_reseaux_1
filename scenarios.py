@@ -4,7 +4,7 @@ from ai import CaptainBraindead, MajorDaft,AssasinJack,PredictEinstein
 from knight import Knight
 from pikeman import Pikeman
 from crossbowman import Crossbowman
-from smartAI import SmartAI
+from smartAI import GeneralStrategus
 
 def scenario_simple_vs_braindead() -> Game:
     # 1. LA TAILLE LÉGALE (120x120)

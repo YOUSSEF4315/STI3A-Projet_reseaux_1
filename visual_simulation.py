@@ -2,9 +2,17 @@ import pygame
 import sys
 
 # --- IMPORTS ---
-# Assure-toi que ces imports correspondent à ta structure de dossiers
-from main import scenario_simple_vs_braindead, TEAM_INFO
+from scenarios import scenario_simple_vs_braindead
 from views.views import GUI
+
+# --- TEAM INFO ---
+TEAM_INFO = {
+    "A": {"name": "Kingdom of the North", "color": "Bleu", "ia": "MajorDaft (agressive)"},
+    "B": {"name": "Empire of the South", "color": "Rouge", "ia": "Captain BRAINDEAD (statique)"},
+    "C": {"name": "Smart Alliance", "color": "Vert", "ia": "GeneralStrategus (intelligente)"},
+    "D": {"name": "The Ripper Coven", "color": "Jaune", "ia": "AssasinJack (intelligente)"},
+    "E": {"name": "Soothsayers Scientists", "color": "Violet", "ia": "PredictEinstein (intelligente)"},
+}
 
 def main():
     # 1. SETUP DU JEU
@@ -31,11 +39,13 @@ def main():
     game_over_processed = False 
 
     print("\n--- COMMANDES ---")
-    print("[P]          : Lecture / Pause")
-    print("[ESPACE]     : Pas à pas")
-    print("[Molette]    : Zoomer / Dézoomer")
-    print("[Clic Droit] : Maintenir pour déplacer la caméra")
-    print("[M]          : Afficher/Cacher la minimap")
+    print("[P]               : Lecture / Pause")
+    print("[ESPACE]          : Pas à pas")
+    print("[Molette]         : Zoomer / Dézoomer (centré sur souris)")
+    print("[Clic/Clic Droit] : Maintenir pour déplacer la caméra")
+    print("[M]               : Afficher/Cacher la minimap")
+    print("[Flèches]         : Déplacer la caméra au clavier")
+    print("[F11/F12]         : Sauvegarde/Chargement rapide")
     print("-----------------\n")
 
     running = True
@@ -61,6 +71,14 @@ def main():
                     if not game.is_finished():
                         game.step(dt=0.1)
                         print(f"Tour joué. Temps: {game.time:.1f}")
+
+                if event.key == pygame.K_F9:
+                    print("Basculement vers la vue Terminal...")
+                    pygame.quit()
+                    from views.terminal_view import TerminalView
+                    view = TerminalView(game)
+                    view.start()
+                    sys.exit()
 
         # --- LOGIQUE DE JEU (MODEL) ---
         if not game.is_finished():
