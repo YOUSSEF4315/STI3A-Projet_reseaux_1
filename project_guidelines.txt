@@ -1,0 +1,2800 @@
+La version dérécursivée avec une pile de l’algorithme A, non récursif terminal, est comme
+suit:
+On définit new et end, deux symboles distincts, indiquant si l’on empile le début d’un nouvel
+appel, ou le retour d’un ancien.
+def A(x):
+if C:
+I ; A(τx) ; F
+else:
+T
+devient
+def A(x):
+calls = [new,x]
+#pile d’appels.
+ret = None
+# valeur de retour
+while calls:
+x = calls.pop()
+# on recupere les arguments de l’appel
+state = calls.pop()
+if state == new:
+# nouvel appel; on traite le debut de A
+if C:
+I
+calls.extend((end,x))
+# quand on aura fini l’appel recursif qui suit,
+# il faudra terminer cet appel: il reste F
+# On stocke le contexte d’ex\’ecution
+# ici, le parametre de la fonction
+calls.extend((new,τx))
+# On lance un nouvel appel A(τx)
+else:
+T
+# les return sont traites
+# comme une affectation a ret
+elif state == end:
+# fin d’ancien appel a terminer
+F # meme remarque que pour T
+return ret
+(261) ♣Dérécursiver la fonction factorial de la question 205 en utilisant le patron ci-dessus.
+(262) ♣Que faire pour les récursivités multiples, mutuelles, ou imbriquées ?
+378
+Part VI
+Python Project 2025–2026: MedievAIl
+BAIttle GenerAIl
+pyproj2526_generail.tex WORK IN PROGRESS !
+Short version: implement a medieval battle simulator capable (hopefully) of sophisticated tactics.
+The context in a nutshell: Age of Empires (2) (AOE) is a medieval-themed RTS (cf. Sec. 74[p399]:
+“What is an RTS / AoE?”). I’m rather fond of it, both as a game and as an bottomless well of
+ideas for Python projects. Although 2021 and 2024’s projects (bt) were also inspired by AOE,
+all three have different focuses and present very different challenges. You won’t gain much
+from reusing code from last year.
+68
+Scope of the project
+Whereas previous projects covered both economic and military aspects, with and without
+user interaction, with the goal of imitating a small subset of AOE, this year’s goal is to focus
+exclusively on AI battles, without any user interaction, base building, economy, or unit
+production, and to exceed the performance of AOE in that regard. Basically you will write
+artificial generals, give them command of equal armies, and may the best AI win.
+The AOE AI is terrible in this regard.
+The principle of AOE is to balance the player’s attention between building an economy
+(villagers gathering resources and erecting buildings), training an army (units produced
+from specific buildings, at the cost of time and resources), and managing the armies in battle.
+The AI in AOE is simultaneously absolutely godlike and utterly pathetic.
+It is godlike, because it always pays attention to everything at the same time.
+A human player is doing one thing at a time. When he is micromanaging a battle, he is
+not reassigning his villagers towards new resources and rebuilding his base that just got
+destroyed and building a new military complex to prepare for the switch to a different kind
+of unit that counters the enemy’s.
+The AI is always micromanaging each of its (up to 200) units at all time. If you give the AI
+infinite resources and instant construction and conscription time, it can and will turn three
+(bt)Sec. VIII[p399]: “Archived Python Project 2024–2025: AIge of EmpAIres”, Sec. XI[p424]: “Archived Python
+Project 2021–2022: Age of Cheap Empires”
+379
+villagers into a heavily fortified base covering half the map and spewing a constant stream
+of hundreds varied units in twenty seconds flat. And while it’s doing all that, if you fire an
+arrow at some random villager, it will casually move the villager to sidestep the arrow.
+It is also programmed to implement the optimised openings developed by the expert players
+of AOE2 over 25 years.
+It is pathetic, because the massive armies which its economy can sustain are usually streamed
+as a constant diarrhoea of units spewed in utter disorder at whichever point it’s decided to
+attack, with complete disregard for common sense and survival, let alone tactics.
+Combat in AOE is a game of counters; almost of rock-paper-scissors.
+Cavalry counters archers, because it’s fast, tanky, and hits hard, so it charges, gets up close
+and massacres the squishy archers. Infantry counters cavalry, because they’re cheaper, so
+you have more of them. Archers counter infantry, because they aren’t too tanky and are
+quite slow and take a lot of damage before getting close.
+It gets more complicated, because there are many types of units within those categories,
+each with different HP, armor (melee or pierce), and bonus damage.
+For instance, pikemen are a very weak infantry unit generally, but they do massive extra
+damage against cavalry.
+Skirmishers are very weak archer-like units, but they have high pierce armor (defending
+against arrows) and do high bonus damage against all archers (and some against pikemen).
+Add to that micro-management of units. Do pikemen counter cavalry archers?
+If the player with the cav archers is not controlling them at all, he’ll be wiped out in seconds.
+If he is paying attention and just uses hit and run tactics, all pikemen will die without
+landing a single hit. Having 1000 pikemen against one cav archer won’t change that. It just
+takes longer. That’s the entire point of having cav archers, whether in the game or in real life.
+Add in all there considerations, and an AOE battle involves many moment to moment
+tactical considerations, especially with regards to battle formations and positioning generally.
+The goal is to manoeuvre the battle in such a way as to have the right type of soldier dealing
+with the right type of enemy, even if you sometimes have to sacrifice some of your army to
+move counter-units out of position.
+The AI does not do any of that; it will send a skirmisher alone against a castle, to die instantly
+without doing any damage; and the next one 15 seconds later; and the next ones indefinitely.
+It will not use battle formations, though that is an AOE feature.
+You will do better.
+380
+69
+Requirements
+(1) The game takes place on a map, which is a grid of size N × M tiles. The absolute
+minimum size you must be able to handle is 120 × 120, which corresponds to a “tiny”
+map in AoE2.
+Note: this is purely to have a coordinates system and an idea of the scale of the map.
+The “game” is still an RTS like AoE, with units of various sizes that move continuously
+and in real time, not limited in movement to specific squares; there is no notion of turn,
+either.
+(2) Battle scenarios.
+Your battle engine will take as input a battle scenario, which is to say a map with
+military units and defensive structures placed on it for each of the two players.
+I have little interest in asymmetric battles. I want to see the clash of different tactics,
+not of different armies.
+In fact I strongly advise you to define your scenarios by populating half the map, and
+mirroring that for the other player.
+I have no interest in scaling up to N players in this project.
+You should be able to handle armies in the 100–200 units range; plus a few buildings if
+you implement those.
+Scenarios should play out very fast (2min max at human-compatible speed); don’t
+position the armies very far from each other; but still far enough that the general has
+time to get his army in whichever formation he wants before the engagement begins.
+(3) Programmable Scenarios and Lanchester’s Laws.
+You should make your battle scenarios by programming them. Do not make a visual
+map editor. A map/scenario is defined by a script that places units on the grid. It
+should take parameters, for instance, the number of soldiers.
+You will make (at the very least!) a Lanchester(type, N) scenario for the purpose of
+testing Lanchester’s Laws (bu).
+type is the type of units to create (melee or archer type)
+N is the base number of units: you will pit N soldiers against 2*N of the same soldiers,
+within range of each other.
+By varying N, you’ll see (and graph, more in the CLI section) how the losses correlate
+(bu)https://en.wikipedia.org/wiki/Lanchester’s_laws
+https://cgsc.contentdm.oclc.org/digital/api/collection/p4013coll3/id/1786/download
+381
+with N for both types of units. If Lanchester’s laws apply, you should get very different
+curves depending on unit type.
+(4) Generals.
+Your program will also take as input a type of AI (a “general”), who commands its
+army.
+You will have at least two generals.
+Victory = destroy target building (wonder) first OR kill all enemy units.
+a. Captain BRAINDEAD.
+The good captain has just come back from a successful lobotomy. He is in no state
+to give any order.
+Units on the field will still attack take individual action, attacking units within
+their line of sight and fighting back against an attack, but they will not seek out a
+fight if left alone.
+Basically, zero tactical AI.
+b. Major DAFT.
+His name stands for. . . itself. . . , and Dumb-As-Fuck-Tactician.
+Major DAFT will command all of his army to attack the nearest enemy with
+absolutely no further consideration.
+The difference with Cpt. BRAINDEAD is that units will actively seek out targets
+and get back into the fight.
+Needless to say, those exist just to make anyone else look good.
+Impressively, the AOE AI manages to consistently lose to both of them in my little test
+scenario. I will demonstrate this to you during the project’s introductory lecture.
+You will do better. I hope. You will program other generals, ideally capable of using
+unit formations, exploiting counters, using hit-and-run, interceptions, feints, and
+sacrifices. I’m less interested in dodging micro (arrows, onagers shots), but it’s also an
+option.
+Concretely, your final version should probably have one central AI program, and each
+of your generals should be defined by a few parameters, activating some features
+(e.g. micro) or changing the weight of different incentives. The alternative risks huge
+code duplication.
+That said, during development you should also be able to pit successive versions of
+your general against each other, so make sure to structure in such a way that this can
+be done.
+382
+No general will play “keepaway” indefinitely. Even if he sees no path to victory, he
+will send his last men on a suicide attack.
+(5) Automated battle tournament.
+You should have a way to automatically pit your generals against each other and score
+their relative strengths.
+You select the participating generals (by default all available functional ones) and the
+scenarios (by default a selection of pertinent scenarios), and launch the tournament.
+Once the tournament is launched, it is fully automatic. For each scenario, and each
+pair of generals, it runs the scenario a set number of time (alternating competitors’
+positions / player number by default) and records victories (draws if takes too long,
+which should be see as a problem and fixed!).
+The tournament will generate a document (HTML, PDF,...) listing outcome and stats,
+with score matrices:
+a. General score for each general across all opponents and scenarios (in percent of
+victories)
+b. General vs General, across all scenarios.
+c. One version of above for each scenario
+d. General vs Scenario, across all opponents (would be interesting if a general had
+inconsistent performance across scenarios)
+Do not exclude reflexive matchups (X vs X): if you don’t get roughly 50% everywhere
+(with enough matches), when not alternating positions, it means you have a bug that
+favours one “player” over the other.
+See also the section on CLI syntax.
+(6) Mechanics, Units, and Structures.
+This is not a game design course, so we will just reuse the mechanics and exact stats
+from AOE. The AOE wikis and other websites will be your sources.
+For instance, you will in https://ageofempires.fandom.com/wiki/Attack
+the general damage formula, with kelev ∈{ .75, 1.25 } as appropriate (see the next point
+on elevation)
+Damage = max(1, kelev ×
+X
+i
+max(0, Attacki −Armori))
+The is also nice: https://www.aoe2database.com/damage_formula/en, https://www.
+aoe2database.com/unit/25/-1/en.
+For units, I also like https://aoe2techtree.net/#Magyars as a synthetic source.
+383
+For instance I can quickly extract the relevant info for Pikemen:
+Pikeman
+Stats
+HP: 55, Attack: 4, Armor: 0, Pierce armor: 0, Range: 0,
+Line of Sight: 4, Speed: 1, Build Time: 22s, Reload Time: 3s
+Advanced Stats
+Attacks
+1 (Shock Infantry), 1 (Standard Buildings), 25 (Elephants),
+4 (Base Melee), 22 (Mounted Units), 16 (Ships), 18 (Camels),
+7 (Mamelukes), 16 (Fishing Ships), 0 (All Archers)
+Armours
+0 (Spear Units), 0 (Infantry), 0 (Base Melee),
+0 (Base Pierce), 0 (Obsolete)
+You will use the exact value from the game — HP, Armors and armor classes, bonus
+damage, reload times, damage values, line of sight, etc — for each unit and building
+you implement.
+We will ignore all civilisation bonuses and pretend we’re in Dark Age, meaning no
+upgrades whatsoever. The units themselves will be mostly from Castle Age, with
+some from the Imperial Age. That means you can take their raw stats as listed in the
+sources, no +1 or +2 or anything.
+The way archery is handled in AOE2 is complicated: Ballistics, Precision, Missed Shot
+Damage, and Hitboxes are some of the concepts involved. I’m not asking you to
+reproduce all that. Just pick a system that works and uses the same damage and fire
+rate calculations as AOE2. We copy AOE2 behaviour where and to the extent that it’s
+easy, and don’t sweat the details where it isn’t, so long as it’s similar enough that I
+understand at a glance the balance of the forces in play.
+The first three units below are absolutely mandatory. Implement the rest as you can,
+preferably roughly in that order.
+a. Knight
+b. Pikeman
+c. Crossbowman
+d. Long Swordsman
+e. Elite Skirmisher
+f. Cavalry Archer
+g. Onager
+384
+h. Light Cavalry
+i. Scorpion
+j. Capped Ram
+k. Castle (defence and target to destroy)
+l. Trebuchet
+m. Elite War Elephant (trample damage)
+n. Monk (healing and conversion: counter to elephants :-)
+o. Wonder (target to destroy: victory condition)
+You will use clearly recognisable sprites (crib those from AOE) so that I know at a
+glance exactly what the units on screen are.
+(7) Agile implementation.
+Do not try and implement all units and buildings in one go.
+Begins with just Knights and BRAINDEAD and DAFT. Then add Pikemen and
+Crossbowmen.
+Then make a general that uses counters to beat the pants off of DAFT, every time.
+Then spend time improving him. You can (and must) automate tournaments across
+different generals / versions / scenarios to quickly test whether your ideas are paying
+off in practice.
+Don’t optimise first. Develop your tactics using formations with smaller armies first,
+then optimise and scale up.
+Don’t add new units if you don’t do anything with them in the end. If you “have” Elite
+Skirmishers but your AI uses them exactly as it does Crossbowmen, then it’s pointless.
+Do not claim to have fully implemented them, then. You’ll show a yellow partial
+implementation checkmark for that unit in the checklist during the project defence.
+A unit is fully implemented when it has all the right values/armor classes etc AND a
+specific behaviour in the hands of at least one of your generals, which plays to that
+unit’s strengths.
+You’ll preferably has a small scenario ready to show for each unit that illustrates that
+behaviour in 30s flat, outmanoeuvring DAFT through superior tactics / positioning.
+FISA: You have much less time for this project than your FISE comrades. Trying to
+pointlessly multiply units would be an even greater trap for you. Focus on a few, and
+make them work as intelligently as you can. Using one’s time efficiently is always
+important, but the less time you have, the more critical it becomes.
+385
+(8) No main menu: CLI
+Do not spend much time implementing a sophisticated game menu with a pretty
+background and music etc. I could hardly care less.
+I care about functionality. Let’s use a CLI. You will use argparse.
+You should have something like that
+battle run <scenario> <AI1> <AI2> [-t] [-d DATAFILE]
+battle load <savefile>
+battle tourney [-G AI1 AI2...] [-S SCENARIO1 SCENARIO2] [-N=10] [-na=False]
+battle plot <AI> <plotter> <scenario(arg1,...)> <range for arg1> ..... [-N=10]
+To launch a battle / load a save / run an automatic tournament / plot the outcomes of a
+scenario with parameters.
+-t for launching terminal view instead of 2.5D.
+-d for specifying whether / where to write data from that battle.
+-N number of rounds for each matchup.
+-na for not alternating player position across N matches.
+Tell me if you think of important options, I may want to put them here so every group
+uses the same syntax.
+More explanation for plot, by example:
+battle plot DAFT PlotLanchester Lanchester [Knight,Crossbow] range(1,100)
+Recalling the signature of the scenario: Lanchester(type, N), this does roughly
+(pseudo code):
+for type in [Knight,Crossbow]:
+for N in range(1,100):
+data[type,N] = Lanchester(type, N).run() # also, repeat N times etc...
+PlotLanchester(data)
+where data[type,N] contains at least the number of casualties / units remaining / total
+HP damage taken on each side, and PlotLanchester produces pertinent graphs to
+visualise that data. In that specific case, I expect the larger side to win every time, and
+what’s interesting is to have a graph with two curves corresponding to types, with
+x=N and y=casualties sustained by winning side.
+Of course, a scenario may have several pertinent Plotters, and you may want to
+produce the data once and iterate on the plotters, so it’s probably best to separate the
+code for the scenarios and the plotters.
+386
+For the CLI arguments, do not hesitate to use eval() it will simplify things, allowing
+you to use Python code with you own class names etc directly in the arguments, rather
+than waste time writing a front-facing translation layers between them. (What are the
+security implications of using eval() in that case?).
+For tourney and plot, note that it should be possible, even easy, to have these battles
+in parallel, on powerful CPUs at least. Two reasons:
+(1) If you have properly separated the logical engine from the graphical interface, you
+can run battles without displaying them graphically, and, without no need to slow
+down for the benefit of humans, as fast as the CPU can compute the moves (headless
+mode). (2) You don’t need a very sophisticated architecture to run battles in parallel.
+Especially in headless mode. tourney can just call plenty of instances of run as batches
+of external processes and wait for them to finish to collate the data / call a new batch.
+Thus a very good implementation will allow you to gather data from hundreds or
+thousands of battles in few minutes.
+Of course, if you can’t do that, a naive implementation of tourney and plot, running
+at human speed is better than no implementation at all :-)
+(9) Map visualisation: terminal
+Just like the game of chess is independent of the gameboard you use — wooden or
+glass pieces? on the table or on a computer or purely via chess notation through email
+or snail mail or . . . — the logic of your game must be independent of its graphical
+visualisation.
+This is extremely important to understand, with far-ranging consequences on develop-
+ment time, quality and reliability of code, etc.
+To force you to separate the logic of the game (the rules, its state in the abstract) from
+how it is visualised, I ask you to provide two visualisations.
+The first one is a terminal view. It does not need to show everything, but should still be
+sufficient to get a general idea of what’s going on for small games on very small maps.
+It will serve as a failsafe should you fail to develop the 2.5D view, so you have
+something to show on the day of the evaluation.
+You will use the letters given for each building / tile to represent the map. For instance
+CCCCCCCC
+CCCCCCCCC
+PPPPP
+PPP
+P
+kkkk
+387
+k
+represents a formation of Pikemen (P) converging towards enemy knights (k). I use
+uppercase/lowercase to distinguish players here, but you should use colours.
+One must be able to pause the game with P, to scroll the map using ZQSD and
+directional keys (+Maj to go fast).
+Pressing TAB will pause the game and open a webpage (generated HTML file) listing
+all units in the game and their stats (HP, position, etc) and current tasks, as well as any
+relevant data on the states of player AIs. (This is purely a snapshot of the current state;
+it need not be regenerated as the game progresses!)
+For instance, one could learn that the soldiers have lost HP.
+You will not spend too much time making the page look pretty, but do give some
+thought to making it readable and searchable (collapsible sections) etc.
+(10) Map visualisation: 2.5D
+Separately from the terminal visualisation, you shall provide a graphical, top-down
+2.5D (isometric, sprites-based) visualisation of the game map, in the style of AoE.
+That means you can start or load a game either in terminal of GUI mode, or even
+switch between them on the fly, using the F9 button.
+You may the use the sprites of AoE or other games, if you can extract or download
+them. It’s a programming project, not an art class.
+You will need a graphical framework for this task. Various possibilities include:
+⋄PyGame, https://www.pygame.org is the most common choice among students
+for this type of projets.
+⋄the Arcade Library
+https://api.arcade.academy
+https://learn.arcade.academy.
+Very fresh, but active; a few groups used it and had a good experience.
+⋄TkInter,
+⋄PySimpleGUI (with TkInter backend only; simpler to begin with)
+⋄PyQt5 or PyQt6 (more powerful, more complex, external requirements (bv))
+⋄wxPython,
+https://www.wxpython.org
+Bindings to wxWidgets, similar to PyQt.
+(bv)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+388
+⋄PursuedPyBear,
+https://ppb.dev
+This one seems very fresh out of the oven, and not documented.
+⋄Kivy,
+https://kivy.org
+⋄or anything that works with Python, really, I’m not picky, what matters is the
+result.
+Test the different possibilities, and choose wisely.
+Do not attempt to do this in full 3D.
+You should also be able to pause in this view. Variable speed would be great as well.
+(11) Minimap (2.5D):
+The 2.5D view should include a minimap for fast navigation — this will be of great use
+during the demonstration.
+This can take the form of an actual minimap always present in the corner as in AoE, or
+be a global, zoomed-out view activated through the M key. You can also have both, if
+time allows.
+(12) Army visualisation:
+One should be able to see the numbers and types of units for both players at all times.
+If all this obscures too much of the screen, use F1 through F4 to activate / deactivate
+some or all of the displayed information.
+(13) Save and load.
+You should be able to save the game state whenever you want, and load it with minimal
+loss of information.
+Ideally, that includes what the AI’s state of mind (planning an attack, game plan, etc).
+You must be able to handle an arbitrary number of saves, manipulating them as
+standard files.
+F11 = quick save
+F12 = quick load
+Since your scenarios should only last a couple of minutes at most, it’s less important
+than for past years’ projects, but still nice to have, and it’s another thing that forces
+you to have a decent architecture behind the scene, in which case it can be done in a
+few lines via serialisation.
+(14) Elevation. (“I have the high ground, Anakin!”)
+In AOE, a map tile exists on a level of elevation (0-16). A unit on “the high ground”
+relative to another, that is to say on a tile with a higher level, inflicts 1.25 times the
+389
+damage, and takes .75 times the damage. This applies to all units, buildings, and
+damage types, not only archers.
+This adds a very interesting tactical consideration, and I’d like you to implement that.
+It is not a great priority, however.
+It can be tough to represent graphically, but topological lines and a colour gradient
+will amply suffice; plus perhaps moving up slowing units down a bit.
+(15) Obstructions. VERY OPTIONAL
+We’ll begin with entirely open maps with no obstructions besides units and (maybe) a
+few building.
+If you’ve pretty much covered all the rest, you can add obstructions to your map: impassable
+tiles.
+The completely changes how how the forces interact, more complicated pathfinding
+algorithms become necessary. . . you get the idea.
+Part VII
+Python Projet: Practical Modalities
+70
+Groups: size and composition
+This project is done in groups of 5 or 6.
+Groups will be determined “randomly”, not chosen by students. The aim is both to save
+time and avoid reproducing the usual cliques.
+It is recommended that each group designate a “project secretary”, whose tasks include
+keeping track of who does what; he should have a global vision of the state of the project,
+and be able to inform me of it efficiently. He will probably be the main writer of the final
+report, so pick somebody who likes to write (French or English, I don’t care).
+None of this should take much time, so only a slight reduction in overall programming or
+design tasks is acceptable for the group secretary.
+Nor is he automatically the taskmaster, bossing others around. If that’s what you want, why
+not, but how you organise yourselves in the group is entirely up to you.
+390
+71
+Evaluation
+At the very end of the semester, each group will:
+⋄Hand over a short report, a couple of days before the defence, summarising which
+requirements have been met, the individual contributions of each member, and the
+individual score of each member, agreed upon by group consensus.
+⋄Present their work (15 minutes). This is referred to as “the defence” / “la soutenance”.
+It is mostly a live demonstration of the work, with the help of a few very specific slides.
+⋄Hand over the git history of the whole project (all source code and assets). Immediately
+before the defence.
+⋄Hand over the slides used for the defence. Immediately after.
+An individual mark shall be given to each student on the basis of all that.
+Neither the report not the defence are marked in and of themselves. They are tools to
+communicate and assess the scope and quality of your work, and that is what we endeavour
+to evaluate.
+72
+Short report
+The report must be a single PDF file, not exceeding 5Mb, titled “<group number> python
+report.pdf”. Only one must be uploaded on Celene for the group.
+It must contain the following things:
+(1) A recent photograph of each member of the group, with the corresponding names,
+arranged so that all fits on one A4 page, vertical / portrait.
+(2) A screenshot of the 2.5D view of your project, showing as many things as possible.
+Again, must fit on a single A4 portrait page.
+(3) A synthetic list of requirements:
+The project has a number of requirements, numbered in the document, each with a
+title in bold.
+For each requirement, in order and using the same numbering scheme as me, and using
+the same titles in bold as me, you will state whether it is fully met (green), partially
+met (yellow), or not met (red), with a few lines of text explaining, where applicable,
+how your implementation deviates from the requirements.
+391
+(4) A detailed description of the contributions of each. It must be clear enough, in
+conjunction with the presentation, to enable the jury to mark the work of each student.
+Each member must write a paragraph listing their useful contributions to the project.
+The whole group must read every such paragraph, and a consensus must be reached
+that they are accurate. If a consensus cannot be reached — which will reflect poorly
+upon the whole group — a dissenting opinion must be written in a paragraph below
+the offending paragraph.
+For instance, suppose that X claims to have done all the GUI, and Y and Z think they
+have meaningful contributions to it, and the rest of the group has not followed what
+happened in that part of the code.
+Y and Z protest X’s claims in his contributions paragraph when the group reads it. X
+refuses to modify his paragraph. Then Y and Z should add a dissenting opinion under
+X’s paragraph, explaining what they disagree about. X cannot modify their dissenting
+opinion, anymore than Y and Z can modify X’s contributions paragraph.
+The final report must of course bear the imprimatur of all group members, but this is
+especially vital for those paragraphs.
+(5) A zero-sum scoring of the contributions of each group member.
+Il vous est demandé de pondérer la quantité de travail (utile, justifiable) de chacun par
+consensus du groupe. Par exemple: tout le monde a fourni le même travail, sauf X qui
+a travaillé 2 fois plus (fourni deux fois plus d’“utilité”, pas seulement “remué deux
+fois plus vent”) que les autres. Ces pondérations affecteront la note individuelle.
+Qu’entend-on par travail utile, justifiable ?
+Le plus facile à évaluer est la quantité de fonctionalités conçues et implémentées,
+pondérées par leur importance pour le projet.
+Des aspects plus indirects ou flous de l’ordre du managérial ou “aide à la cohésion
+du groupe” sont à prendre en compte avec modération et beaucoup de prudence. Ne
+donnez pas un poids élevé à “ce gars a maintenu notre moral en faisant des blagues
+hénaurmes toutes les 5min” ou même au plus sérieux “il a joué le Boss et fait les
+diagrammes de Gantt de tout le monde” – sauf si c’était vraiment très utile, finement
+détaillé techniquement, et a vraiment eu une influence forte sur le groupe. Mais même
+dans ce cas, c’est un travail d’ingénieur qu’on note, pas de manager. S’il a fait les deux
+c’est un bonus, mais s’il n’a fait que le manager le score doit être faible, car ce n’est pas
+ce qui est demandé.
+On note les “résultats”, pas juste le temps passé. Quelqu’un qui bosse jour et nuit mais
+fait surtout des bêtises ou dessine 50 versions des icônes dont personne n’a besoin
+pendant qu’il reste des bugs urgents doit avoir un bas score. Quelqu’un qui fait ça
+alors que le groupe insiste pour qu’il fasse autre chose, mais est ignoré, doit avoir un
+392
+très bas score.
+Notons que “résultat” n’implique pas que, si ça n’apparaît pas dans le produit fini, ça
+ne compte pas. Le débuggage d’un bug complexe est un travail à valoriser dans le
+score, même si au final la partie du code qui a été debuggée a fini par être retirée du
+projet pour d’autres raisons.
+La question est “au moment où le travail a été entrepris, était-il pertinent étant donné
+les connaissances du groupe à ce stade”.
+Par exemple, un travail de recherche en profondeur est tout à fait valorisable, même si
+le résultat final n’est pas à la hauteur des espérances – mais évidemment c’est toujours
+beaucoup mieux s’il l’est !
+De même, aider un camarade est aussi valorisable – là aussi dans la mesure du
+raisonnable.
+Le rapport doit obligatoirement fournir la pondération de la manière suivante,
+obtenue par consensus (bw) au sein du groupe:
+Chaque membre du groupe i est assigné un score / une pondération pi ∈N, de manière
+à ce que le ratio pi/pj reflète bien la proportion de travail utile fourni par i par rapport
+à j. Vous devez donc CONCRETEMENT rendre une liste d’association “membre du
+groupe 7→score (nombre entier)”.
+(Note: use your full name, of the form “FAMILY Given-name” for this, not just your
+first name. My lists are sorted by family name, and I don’t know by heart who “Bob”
+is. Bonus points (morally, at least) if you sort by family name.)
+Par exemple, si l’on a pBasil = 2, pCunégonde = 1, et pQuetzalcoatl = 8 cela signifie que Basil a en
+gros été deux fois plus productif que Cunégonde, mais bon globalement Quetzalcoatl
+est un dieu et a bien porté le groupe, ayant fourni
+pQuetzalcoatl
+pBasil + pCunégonde + pQuetzalcoatl
+=
+8
+11
+= 73%
+du travail total – en supposant un groupe de trois.
+Pour discuter des scores de chacun, il peut être utile d’utiliser des nombres de points
+“intuitifs”.
+Par exemple, si P
+i pi = 100, i.e. on a 100 points au total à distribuer entre tous
+les membres, alors pi représente la proportion du projet (produit fini ou travail de
+recherche valide) attribuable au travail de i, exprimée en pourcents.
+On peut aussi partir de pi = 100 pour chacun (tout le monde est égal est moyen) et
+ajuster en rajoutant des points aux membres moteur (par exemple, Machin est à 120%
+(bw)pas majorité; ce n’est pas un vote. On en discute ensemble jusqu’à ce que tout le monde tombe d’accord.
+Voir plus bas si l’on n’y arrive pas.
+393
+par rapport au membre moyen, donc pMachin = 120) et en enlevant aux membres qui ont
+été plus tirés par le groupe pTruc = 80, en essayant de maintenir l’invariant P
+i pi = 600
+(pour un groupe de 6), afin de préserver l’idée que 100 représente le score du membre
+moyen du groupe. (Même si ça fait chaud au cœur de dire “tout le monde est au dessus
+de la moyenne du groupe”, mathématiquement ça ne marche pas. L’utilisation d’un
+score “zero sum” évite ce biais.)
+Having P
+i pi be a nice, round number is not strictly necessary, but it helps me check
+that I have copied the numbers correctly on my spreadsheet. In any case, tell me what
+P
+i pi is supposed to be, so that it can serve as a checksum of sorts.
+Note: ce score ne doit pas être ajusté par le groupe pour prendre en compte des excuses, valides
+ou non. Si A et B ont objectivement moitié moins avancé que la moyenne (notée à
+100) alors tous deux doivent avoir un score de 50. Le fait que A a passé la moitié du
+semestre à jouer à Minecraft alors que B a passé la moitié du semestre à l’hôpital suite
+à une attaque de Vélociraptor (non-provoquée) ne doit pas intervenir. Les excuses
+valides d’ordre médical ou autres sont prises en compte par le corps enseignant à divers
+niveaux; en ce qui concerne l’auto-évaluation, ce n’est en aucun cas votre problème.
+Note: this score must must be computed with respect to the whole group, not wrt. subgroups.
+For instance, one group was broken into 3 pairs with different tasks, and each pair was
+given an equal number of points to distribute between them. This is not valid, as it
+bypasses the hard work of evaluating the value and difficulty of each task.
+Note: Consensus , Vote:
+A way some groups have “achieved consensus” in previous years is by averaging or
+summing scores given (sometimes anonymously !) by all members to each member.
+This has a chance of being a meaningful metric only if everybody is very well-informed
+about every other member’s contributions. Otherwise it tends to produce noise, which
+tends to yield poorly differentiated scores. You may use such techniques if you wish,
+but it must be a mere starting point that is then discussed by the group until nobody is
+shocked by any mark.
+I consider vote-based methods a bit of a “cheat code” when it comes to achieving
+consensus. Votes are a conflict-breaking tool, not a truth-finding tool. The only
+consensus truly achieved by taking a vote about X is the meta statement “the outcome
+of the vote about X, whatever it is, holds value.” This actually says nothing about X or
+whether that outcome is correct.
+That’s fine if the question is “what colour should the bike shed be”, because to the
+extent that there might be a right answer here, it’s probably “whichever colour most
+people want” anyway. Even if many (or even all (bx)) people dislike the result, the most
+important thing is not to waste more time on the issue, and to avoid fighting over it.
+Let’s just pick a colour and move on.
+(bx)If you average the result of a vote on colour, you’ll probably get a vomit-inducing khaki nobody wanted :-)
+394
+The situation is quite different when matters of fact must be decided, with real stakes
+and decidedly right (correct, accurate,. . . ) or wrong answers. The scientific method
+does not proceed through votes.
+Votes should only be used when there is a conflict to break, not before, and this only
+if there is a pressing need to coalesce to a decision. Whenever possible, a consensus
+obtained through rational discussion of all available evidence must be preferred.
+Do not use voting as a clever tool to circumvent rational, possibly heated, discussion,
+and avoid having to actually formulate, defend, and change your opinions.
+I want a consensus on the quality of the work of each, obtained through thorough discussion —
+and I know it can be hard — not a consensus on a hack to avoid really having said discussion.
+The last thing I want is for a group (I take an extreme theoretical case) where everybody
+wants all the points to average anonymous votes and come up with the same score for
+everybody. . .
+Si la pondération donnée par le groupe est manifestement fausse, c’est tout le groupe
+qui sera pénalisé.
+Par exemple si le groupe dit “ben tout le monde a travaillé pareil, 100 à chacun”, alors
+que pendant la soutenance on voit bien qu’il y a une personne qui sait répondre à
+toutes les questions, que ce soit sur la vue d’ensemble ou sur le fonctionnement du
+code, et une autre qui découvre la sujet et le logiciel le jour de la soutenance, ça va
+mal se passer. Soit tout le monde était tellement à la masse pendant le projet que
+personne n’a remarqué les grosses différences entre membres, soit le groupe est trop
+disfonctionnel pour avoir une conversation bilan honnête entre ses membres.
+Les étudiants se plaignent souvent – et à raison ! – que les notes des travaux de groupe
+sont injustes; c’est l’occasion de rectifier le tir et, les enseignants n’ayant pas le budget
+pour une boule de cristal ou de chevaux de Troie dans vos ordinateurs, vous êtes
+encore les mieux placés pour le faire.
+Si un consensus ne peut pas être atteint au sein du groupe (essayez, quand-même,
+parce que ça n’amusera personne de gérer ça et risque de pénaliser le groupe globale-
+ment) proposez plusieurs pondérations (e.g. celle soutenue par A, B, D, et E, selon
+laquelle C et F sont des glandeurs, et celle soutenue par C et F, selon laquelle ils ont
+tout fait) et nous en discuterons calmement.
+Si le groupe atteint tant bien que mal un consensus mais qu’un (ou plusieurs) membre
+(ou sous-groupe) n’est pas satisfait, mais pas tout à fait au point de refuser entièrement
+le consensus (i.e. “J’accepte, mais pas content !”, versus “Je refuse ! Révolution !”), ce
+membre peut joindre au rapport, sous le consensus, une opinion dissidente expliquant
+ce qui le chiffonne un peu dans le consensus tel qu’il est.
+Le rapport peut également mentionner si le consensus a été obtenu facilement ou s’il a
+été difficile à négocier.
+395
+FAQ : comment la pondération donnée par le groupe affectera-t-elle la note indi-
+viduelle, exactement ? Y a-t-il une formule ?
+Nous noterons au mieux, dans un monde imparfait, avec les informations dont nous
+disposons.
+There is indeed a formula that is being (somewhat) systematically applied. Following
+Goodhart’s law (by), I will not share it.
+I would just note that in 2018–2019, the maximal difference between the worst and best
+marks within a group was 9 points out of 20. (The minimal intra-group difference was
+0.1 points. The average intra-group difference was 4 points.)
+The upshot is that you should not expect to get a good mark merely because other
+people are working and the end product is good. You have to contribute to it.
+Conversely, if you are unlucky and end up in a disfunctional group, this does not
+automatically mean your mark will be terrible, so long as you can show meaningful
+contributions.
+Overall, this system, while imperfect, proved much better, meaning much fairer, than
+handing out the same mark to everybody in each group, as was the case previously.
+The cost is to force the group to confront and to evaluate the very real differences of
+skill and investment within the group, and confront one’s autoevaluation to that of the
+group, which are very socially difficult exercises, without a doubt, but necessary ones.
+73
+The defence
+Il y aura une journée de soutenances à la fin du semestre, où chaque groupe présentera très
+rapidement ses travaux, en fera une démonstration, et répondra à des questions.
+Les modalités exactes sont comme suit:
+73.0.1
+Horaires de passage
+Le planning sera en ligne sur Celene.
+Deux salles seront réservées pendant les soutenances: c’est le jury qui passe d’une salle à
+l’autre.
+De cette manière chaque groupe peut s’installer tranquillement pendant que le groupe
+précédent soutient dans l’autre salle.
+(by)When a measure becomes a target, it ceases to be a good measure.
+396
+73.0.2
+Timing
+Each group will have a 30min slot. You will have 15min to talk without interruption. The
+remainder of the time will be for questions / remarks.
+Your talk will spend
+⋄2 minutes max on slides — In the next paragraph I’ll tell you exactly what your slides
+are going to be. You will open with this.
+⋄13 min of live demonstration.
+Be extremely strict on time. I shall interrupt you mercilessly the instant you go overboard
+either on the slides of the global duration.
+You will be ready to switch back and forth between the slides and the demonstration during
+the questions.
+73.0.3
+The slides
+Each slide will have your group number somewhere.
+There will be no animation or slide transition, or generally anything that does not perfectly
+translate into a two page PDF.
+You will have exactly the following slides:
+(1) A synthetic table of requirements met (green/yellow/red), like in the short report, but
+with fewer details so that it all fits on a single slide.
+You will speak for about 1m30 maximum to summarise the important points, espe-
+cially to make us understand the scope of the limitations regarding the yellow/red
+requirements.
+(2) A single slide with a recent photograph of each member, their name, their individual
+score (as in the report — the scores must of course be the same as in the report !), and a
+few keywords as to the nature of their contributions.
+About 30s maximum will be spent on this; the aim is the have a rough idea how
+uniformly (or not) the work was allocated before beginning.
+We may use the slides as support during the questions phase.
+73.0.4
+The live demonstration
+The demonstration must convince the jury that every requirement you claim to have met is
+indeed met.
+Prepare it and rehearse it well in advance, like a theatre play, using functionalities of your
+project to help you, such as save and load. In your discourse, use the same keywords as in
+397
+the requirements list, and quickly state the corresponding requirement number, to make it
+clear what requirement(s) you are demonstrating.
+The demonstration must be live, we will not accept prerecorded videos or screenshot slide
+shows.
+During the questions phase, you must be ready to let the members of the jury interact
+directly with your project.
+While every member of the group must be present and answer direct questions from the
+jury, not every member needs to talk equally (or indeed at all) during your 15min. Again
+there is no mark for the defence itself; the aim is to convey the scope and quality of your
+work. Apportion the presentation time among your group in order to maximise the clarity
+of the defence.
+Les démonstrations peuvent se dérouler soit sur l’ordinateur de la salle (celui connecté au
+vidéo projecteur), soit sur votre ordinateur portable personnel.
+Dans tous les cas, évitez les temps morts dus à des contraintes techniques. Do everything
+on a single computer rather than spending time fighting the video projector each time you
+switch machines.
+Vérifiez aussi la connexion de l’ordinateur servant à la démo avec le vidéo-projecteur avant
+le jour J.
+398
+Part VIII
+Archived Python Project 2024–2025: AIge
+of EmpAIres
+Short version: Implement a bare bones “Age of Empires”-style RTS engine for AI-vs-AI battles.
+74
+What is an RTS / AoE?
+The astute reader might notice that this projet is related to, though distinct from, Part XI[p424]:
+“Archived Python Project 2021–2022: Age of Cheap Empires”. If you are not familiar with
+Real Time Strategy (RTS) games, especially in the Age of Empires (AoE) series, you are
+invited to get some idea of the general principles.
+It should go without saying that you do not need to buy or play any of these games. You
+can get all relevant information by watching videos of AoE I and II on the internet, and
+consulting the wiki or the official site:
+⋄https://ageofempires.fandom.com/wiki/Age_of_Empires
+For a more hands-on look on that genre, you can install 0 A.D., a game originally made as a
+mod for Age of Empires II, now entirely free software. You can install it on most modern
+Linux distributions with a single command; for instance:
+sudo apt install 0ad
+# Debian-based
+sudo pacman -Syu 0ad
+# Arch-based
+0 A.D. is its own thing, with its own unique mechanics, but remains extremely similar in
+look and feel to AoE I and II, so it can give you a general idea of how a game like that plays.
+For large screens, you may want to create a file ~/.config/0ad/config/local.cfg contain-
+ing a line of the form gui.scale = "1.875", to scale up the GUI elements, including the
+fonts — here by a factor of 1.875, to replace by what works for you.
+The remainder of this document assumes basic familiarity with the concepts of those games.
+75
+Scope of the Project
+Unlike the 2022 project, the aim is not to implement an RTS game. I want to avoid giving
+too much focus to technically uninteresting aspects such as user interface and gameplay
+399
+mechanics. We shall have the bare minimum of buildings and units, and focus entirely
+on AI-vs-AI matches, with no direct input from the user during the matches. Your main
+tasks will therefore be to (1) develop a game engine, and (2) fine-tune various AI profiles
+(defensive, aggressive, etc).
+You will demonstrate the quality of the final product by showing large battles between
+multiple AIs deploying sophisticated strategies.
+75.1
+List of Requirements
+AoE2 is my reference point, and we shall take a minuscule subset of rules from it.
+(1) The game takes place on a map, which is a grid of size N × M tiles. The absolute
+minimum size you must be able to handle is 120 × 120, which corresponds to a “tiny”
+map in AoE2.
+(2) The maps will be randomly generated — a fact that you must be able to demonstrate.
+(3) You will support at least two different types of randomly generated maps, each with
+strategic and tactical implications: for instance one with generous resources dotted
+across the map (take the Arabia map from AoE2 as reference for what that looks like)
+and one where all the gold is at the centre of the map.
+(4) Population limit = maximum number of units per player: 200.
+Actual limit in play determined by houses and town centres, within that maximum.
+(5) The following resources:
+a. Wood (W), 100 per tile (tree)
+b. Food (through farms only) (F), 300 per farm
+c. Gold (G), 800 per tile
+(6) Units:
+a. Villager: v
+Cost 50F, 25 HP, Training time 25s,
+2 attack (1 attack per second for all units), speed 0.8 tile/second.
+Can build buildings.
+The nominal building time t of a building given below is the time required for one
+Villager to construct a building alone.
+If n Villagers are used, and t is the nominal building time remaining, the actual
+building time will be
+3t
+n+2.
+Can collect resources at rate of 25/minute, can carry 20.
+400
+b. Swordsman: s
+Cost 50F+20G, Training time 20s,
+40HP, 4 attack, speed .9.
+c. Horseman: h
+Cost 80F+20G, Training time 30s,
+45HP, 4 attack, speed 1.2.
+d. Archer: a
+Cost 25W+45G, Training time 35s,
+30HP, 4 attack, 4 range (Euclidean distance; norm 2), speed 1.
+(7) Buildings:
+a. Town Centre: T
+Cost 350W, Build time 150 seconds,
+1000 HP, 4x4, Spawns Villagers, Drop point for resources
+Population: +5.
+b. House: H
+Cost 25W, Build time 25 seconds,
+200 HP, 2x2, Population: +5.
+c. Camp: C
+Cost 100W, Build time 25 seconds,
+200HP, 2x2, Drop point for resources
+d. Farm: F
+Cost 60W, Build time 10 seconds,
+100HP, 2x2, Contains 300 Food.
+Note: this is the only walkable building, cf. AoE2.
+e. Barracks: B
+Costs 175W, Build time 50 seconds,
+500HP, 3x3, Spawns Swordsmen
+f. Stable: S
+Costs 175W, Build time 50 seconds,
+500HP, 3x3, Spawns Horsemen
+g. Archery Range: A
+Costs 175W, Build time 50 seconds,
+500HP, 3x3, Spawns Archers
+h. Keep: K
+Costs 35W, 125G, Build time 80 seconds,
+800HP, 1x1,
+Fires arrows: Attack 5, range 8
+401
+(8) Starting conditions:
+a. Lean: 50F, 200W, 50G,
+Town Centre, 3 Villagers
+b. Mean: 2000(F,W,G)
+Town Centre, 3 Villagers
+c. Marines: 20000(F,W,G)
+3 Town Centres, 15 Villagers, 2 (Barracks, Stable, Archery Range)
+(9) Agile implementation.
+Do not try and implement all units and buildings in one go, before starting work on
+the systems that depend on them.
+First implement only villagers and town centres, give them large starting resources
+and implement villager wars.
+Then, once the game loop is shown to work, go back and implement more variety of
+resources and units.
+If at the end of the day you do not have a complete product in the sense that some units
+and buildings are missing, but you can otherwise demonstrate that what you have does
+work as expected, that won’t be ideal, but the outcome will still be honourable. You’ll
+indeed have made a game AI, albeit a limited one.
+On the other hand, if you tell me that you have, technically, implemented every unit
+and every building, but none of them actually moves of builds or fights, then you
+don’t actually have anything of any worth.
+(10) Bare-bones main “menu”.
+Do not spend much time implementing a sophisticated game menu with a pretty
+background and music etc. I could hardly care less.
+I care about functionality. You must be able to create a new game with various
+parameters, save and load a game efficiently. Whether you do this through a GUI or
+entirely through command line options, it must be easy and fast to use during the
+demonstration.
+I would not accept, for instance, that your game can only have one (or three, or five)
+save file(s) because of limitations in your menu GUI. If you must have a menu GUI,
+use the standard file open dialogues for such purposes. TkInter is fine for that type of
+tasks.
+(11) Map visualisation: terminal
+Just like the game of chess is independent of the gameboard you use — wooden or
+glass pieces? on the table or on a computer or purely via chess notation through email
+402
+or snail mail or . . . — the logic of your game must be independent of its graphical
+visualisation.
+This is extremely important to understand, with far-ranging consequences on develop-
+ment time, quality and reliability of code, etc.
+To force you to separate the logic of the game (the rules, its state in the abstract) from
+how it is visualised, I ask you to provide two visualisations.
+The first one is a terminal view. It does not need to show everything, but should still be
+sufficient to get a general idea of what’s going on for small games on very small maps.
+You will use the letters given for each building / tile to represent the map. For instance
+s
+s
+W
+WWWWWW
+WWWW
+WWWW
+vFTTTT
+W W
+WWWW
+FFTTTT
+TTTT
+GGv CC
+TTTT
+GGvCC K
+Hv v
+H
+represents a small village with a Town Centre, a gold mine to the east, guarded by a
+Keep, woods to the north-east, two soldiers to the north-west, a farm to the west, with
+a villager walking on it (presumably building it or farming), and two other villagers to
+the south-west, next to houses (presumably building the houses).
+One must be able to pause the game with P, to scroll the map using ZQSD and
+directional keys (+Maj to go fast).
+Pressing TAB will pause the game and open a webpage (generated HTML file) listing
+all units in the game and their stats (HP, position, etc) and current tasks, as well as any
+relevant data on the states of player AIs. (This is purely a snapshot of the current state;
+it need not be regenerated as the game progresses!)
+For instance, one could learn that the soldiers have lost HP, and the farmer is currently
+building the farm.
+You will not spend too much time making the page look pretty, but do give some
+thought to making it readable and searchable (collapsible sections) etc.
+(12) Map visualisation: 2.5D
+Separately from the terminal visualisation, you shall provide a graphical, top-down
+2.5D (isometric, sprites-based) visualisation of the game map, in the style of AoE.
+That means you can start or load a game either in terminal of GUI mode, or even
+switch between them on the fly, using the F9 button.
+403
+You may the use the sprites of AoE or other games, if you can extract or download
+them. It’s a programming project, not an art class.
+You will need a graphical framework for this task. Various possibilities include:
+⋄PyGame, https://www.pygame.org is the most common choice among students
+for this type of projets.
+⋄the Arcade Library
+https://api.arcade.academy
+https://learn.arcade.academy.
+Very fresh, but active; a few groups used it and had a good experience.
+⋄TkInter,
+⋄PySimpleGUI (with TkInter backend only; simpler to begin with)
+⋄PyQt5 or PyQt6 (more powerful, more complex, external requirements (bz))
+⋄wxPython,
+https://www.wxpython.org
+Bindings to wxWidgets, similar to PyQt.
+⋄PursuedPyBear,
+https://ppb.dev
+This one seems very fresh out of the oven, and not documented.
+⋄Kivy,
+https://kivy.org
+⋄or anything that works with Python, really, I’m not picky, what matters is the
+result.
+Test the different possibilities, and choose wisely.
+Do not attempt to do this in full 3D.
+(13) Minimap (2.5D):
+The 2.5D view should include a minimap for fast navigation — this will be of great use
+during the demonstration.
+This can take the form of an actual minimap always present in the corner as in AoE, or
+be a global, zoomed-out view activated through the M key. You can also have both, if
+time allows.
+(14) Resources visualisation:
+One should be able to see the stored resources (Food, Wood, Gold) for all players at all
+times. Additional information such as number of each unit types, etc could be useful
+as well. If all this obscures too much of the screen, use F1 through F4 to activate /
+deactivate some or all of the displayed information.
+(bz)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+404
+(15) Save and load.
+Those games can be long. You must be able to save the game state whenever you want,
+and load it without loss of information. Note that,if you have an AI, that includes
+what the AI knows about the world, and more generally its state of mind (planning an
+attack, game plan, etc).
+You must be able to handle an arbitrary number of saves, manipulating them as
+standard files.
+This will be extremely important for the defense, as you will not have time to play
+several full games during the demonstration. Instead you will load saved games, taken
+at interesting points of various games, to show off big battles, AI gameplan, etc.
+F11 = quick save
+F12 = quick load
+Part IX
+Archived Project 2019–2020 & 2023–2024:
+Evolutionary Game of Life
+76
+Generalities
+The aim is to create a “Game” (ca) centred around a visual and interactive simulation of
+natural selection.
+The serious purpose behind the game is to provide a refresher on evolutionary mechanics,
+both as a matter of general culture and as a prelude to the study of AI and metaheuristics in
+general.
+In particular, genetic – and, more broadly, evolutionary – algorithms are a vast class of
+approaches simulating aspects of Darwinian biological evolution for the purpose of solving
+complex problems for which brute force or analytic approaches are unsuitable.
+The results thus obtained can be very good, but are often a bit “alien-looking”, as evolu-
+tionary processes, whether “real” or simulated, often defy human intuition, aesthetics, and
+engineering principles. (A look at deep-sea creatures should convey that quite well.)
+(ca)I couldn’t come up with a fun name for it, preferably with a pun or a gratuitous insersion of “INSA” in it,
+so I’m just calling it “the Game”, for now.
+405
+For instance, the NASA’s ST5 antenna in Fig. 7 was obtained by evolutionary processes. It
+performs quite well compared to human-designed antennae. The figure actually shows the
+second version of the antenna: the first was more tree-like. A minute change in mission
+parameters resulted in two completely different antenna layouts, where humans would
+come up with more incremental changes.
+Of course, no human intervention was really needed to adjust the design the second time:
+the simulation was already set up, so entering the new constraints and pressing a button
+was all that was needed (plus a few days of computing time on a supercomputer).
+A challenge with evolutionary processes (from both the points of view of computer science
+metaheuristics and biology) is how difficult it is to accurately predict the effects of a change
+in parameters, and how easy it is to come up with plausible-sounding “just-so” stories that
+don’t pan out in the end.
+The Game should provide a fun experimental platform to play with populations by altering
+several aspects of the creatures and their environment, and seeing how they react and evolve.
+It should generate high-quality graphs showing the evolution of those characteristics over
+time.
+To be clear, while the process of programming the Game is in itself a way to teach evolutionary
+processes to INSA students, the final product should be a good tool to help present those
+notions to, say, high school students and such.
+Compared to the related Clockwork (Part XIV[p451]: “Archived Project 2017–2018: Mon(s)tres”)
+and Automata (Part XIII[p442]: “Archived Project 2018–2019: Automata GUI”) projects, this
+one is rather less open-ended and ambitious, as you are not required to actually design, set
+up, and deploy metaheuristics on a given open problem, but merely to simulate some very
+specific traits in a very specific simulation.
+However, I shall be a bit more demanding when it comes to feature-completeness, stability,
+and usability of the final product. Furthermore, there is room for the more ambitious groups
+to considerably expand the scope of the project once they have covered the basics.
+I give in this document some design choices that must be respected, so as to make it easier
+to compare the projects of different groups.
+77
+Specifications
+The Game simulates a world. Since our divine powers are quite limited, our worlds shall be
+quite modest: a grid of size N × M, with N = M = 100 by default (but this should be an
+easily modifiable parameter; every numerical value I give should be so; the values will be
+tweaked as your groups progress and experiment with them, so that they yield relatively
+stable populations.).
+406
+The Game should represent this world graphically, at the very least with a view from the top.
+I strongly recommend setting up a terminal-only graphical engine first — take full advantage
+of the fact that the terminal can display colours and special characters. This should be fast
+and easy to make.
+For the final product, additional support for a 2.5D isometric view – in the style of “old”
+games like Diablo I & II, Age of Empires I & II, etc – is also strongly recommended.
+It should be reasonably cool-looking, without taking you too much time to make.
+It is probably not a good idea to try and support full 3D rendering, unless some members of
+your group already have strong experience in that domain. I’m not even sure what a good
+library for that would be. Perhaps Panda3D?
+The Game should of course have a GUI allowing the user to play with all the parameters of
+the simulation.
+Here are a few possible choices of framework:
+⋄PyGame, https://www.pygame.org is the most common choice among students for
+this type of projets.
+⋄the Arcade Library
+https://api.arcade.academy
+https://learn.arcade.academy.
+Very fresh, but active; a few groups used it and had a good experience.
+⋄TkInter,
+⋄PySimpleGUI (with TkInter backend only; simpler to begin with)
+⋄PyQt5 or PyQt6 (more powerful, more complex, external requirements (cb))
+⋄wxPython,
+https://www.wxpython.org
+Bindings to wxWidgets, similar to PyQt.
+⋄PursuedPyBear,
+https://ppb.dev
+This one seems very fresh out of the oven, and not documented.
+⋄Kivy,
+https://kivy.org
+⋄or anything that works with Python, really, I’m not picky, what matters is the result.
+Note that the execution of the simulation should be independent from the rendering, as
+rendering takes a lot of processing power. Thus not only should the two run in separate
+threads, but it should be possible to simply activate and deactivate rendering at will while a
+simulation is running. Specialised “game-oriented” frameworks should take care of this
+fairly straightforwardly, without requiring you to do much system programming.
+(cb)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+407
+In the world, there live creatures; they are all named Bob. There are initially P = 100 of them.
+Bobs should be graphically represented by sprites that present as clearly as possible their
+individual attributes (speed, size, memory, etc). The representation should be as user-
+tweakable as possible to allow emphasis on whatever characteristics they are interested in at
+the time. For instance, I should be able to set things up so that faster creatures are bluer, and
+bigger creatures are redder, resulting in various hues of blue, red, and purple. Then I should
+be able to change it completely. Bobs’ size should at least support a representation acting on
+the size of the sprites.
+Each Bob spawns in a random cell in the world grid at the beginning of the simulation.
+The simulation proceeds by time increments, or ticks: at each tick all Bobs perform an action,
+for instance walking to the next cell.
+How complex their tasks and actions are depends on the number of characteristics which
+will be simulated.
+77.1
+Basic level: food hunting
+Let’s say that a day amounts to D = 100 ticks. Each day, a total quantity F = 200 of food
+points spawns randomly in the World, each containing EF = 100 energy. There is nothing
+preventing several instances of food from spawning in the same cell, in which case the
+energy values add up.
+Any food left uneaten disappears at the end of the day, just before the new food is spawned
+in.
+Each Bob has an energy level, starting at Espawn = 100, when they spawn, and capping out at
+Emax = 200.
+This energy goes down by 1 each time they move, and they move at random each tick, going
+to an adjacent cell. Diagonal moves are not allowed (because they are at a greater distance;
+we’ll talk about that later).
+When a Bob finds food (is in the same cell as food), it instantly eats as much of it as it can,
+gaining all its energy. If its energy caps out in the process, there are leftovers. It can then stay
+stationary so long as there is food, but each tick spent stationary still consumes 0.5 energy.
+If two Bobs access the same food at the same tick, one of them gets all, arbitrarily.
+If a Bob’s energy level ever falls at or below zero, it dies.
+If a Bob’s energy level caps out, it reproduces via parthenogenesis, spawning a new Bob in
+the same cell (several Bobs can occupy the same cell). The new Bob spawns at Ebirth = 50
+energy, while the “mother” Bob loses Emother = 150 energy (putting her at Emax −Emother = 50
+energy).
+408
+Experiment with this and tweak the values to see what effects the different parameters have,
+until the values yield a stable population with interesting rates of births and deaths.
+77.2
+Velocity
+At the basic level, all Bobs were identical. Let’s change this, and start introducing individual
+characteristics that can be acted on by natural selection.
+Let’s start by adding velocity to the simulation.
+The default Bobs all had a velocity of 1, moving 1 cell in 1 tick, at a cost of 1 energy.
+Now, each Bob B has its own velocity, initially Bv = 1, but each Bob that spawns may mutate
+a bit in that respect: say that C is born of B. Then Cv should fall uniformly in the range
+[Bv −Mutv, Bv + Mutv], where Mutv = 0.1 is the mutation rate for velocity. (Bv = 1 for
+initial Bobs)
+Note that since velocity is not an integer quantity, handling it properly is not trivial. At each
+tick, the fastest moves first, and eats all it can. If a Bob has a non integer movement velocity,
+say, 1.6, then there are two ways to handle it:
+⋄partial actions: (cc) on the next tick, it will move through an entire cell (eating all), and half
+a cell, eating 60% of the food energy there. On the next tick, it will eat the remainder
+(if nobody beat him to the punch), and move through another whole cell.
+⋄speed buffer: (cd) on the next tick, it will act with a velocity of ⌊1.6⌋= 1, and store the
+excess 0.6 into a “velocity buffer”. On the following tick, the buffer will be consumed
+and added to the velocity before the process is repeated: thus this Bob will functionally
+have velocity 1.6 + 0.6 = 2.2 for this tick, acting as though it were of velocity 2 and
+storing 0.2 in the buffer for subsequent ticks.
+The buffer proposal is probably the best, as it avoids having to attempt giving a meaning to
+all partial actions: what is “partial reproduction”, for instance?
+Speed has a cost, however. We are going to follow physics roughly, here. The kinetic energy
+of an object is given by
+1
+2mv2 ,
+so, following that, on each tick, B will consume Bc = B2
+v energy to move. For instance,
+double the speed means quadruple the energy cost. (It’s a bit more complicated in real
+life, because that only accounts for the cost of acceleration, but this formula is sufficient to
+introduce clear, intuitive trade-offs in our simulation.)
+To avoid Bobs becoming immortal simply by virtue of not moving at all, we say that a Bob
+consumes, at a minimum, Etmin = 1
+2 energy per tick. The actual energy consumption is
+(cc)This was the original proposal.
+(cd)This is the revised proposal after discussions with students.
+409
+therefore
+B′
+c
+= max(Etmin, Bc)
+This applies for all other versions of Bc below.
+Run the simulation and see how speed evolves over time.
+The impact of each of characteristics such a this should be configurable in real time – for
+instance if I want to remove speed from the equation I should be able to set Mutv = 0
+whenever I want.
+77.3
+Mass
+Now let’s add the possibility for Bobs to evolve some serious muscle mass. Mass will be,
+like velocity, a genetic characteristic. Our default Bobs had mass Bm = 1. Like velocity, mass
+is genetic, and mutates in the same way. We do not model a cost on birth, however, mass
+has a cost on mobility. Following the kinetic energy model, mass multiplies the movement
+cost on each tick: a Bob will therefore consume
+Bc
+= BmB2
+v
+energy on each tick for movement.
+Mass should be reflected in the size of the sprites in the graphical representations. Note that
+mass is proportional to volume, and volume is proportional to the cube root of mass, so the
+size of the sprites should scale like
+3√Bm.
+What is the benefit of being bigger? You can eat (much) smaller creatures. If Big Bob B and
+small bob b meet (are in the same cell at the same tick, even if one of them is only “partially”
+there due to non-integer speeds), and the difference in size is important ( bm
+Bm < 2
+3) then, Big
+Bob can, and will, eat small bob. Small bob dies. Big Bob’s energy level Be is updated
+according to the equation
+Be
+:= Be −1
+2
+bm
+Bm
+be + 1
+2be
+= Be + 1
+2be
+
+1 −bm
+Bm
+
+The idea is that the fight takes some energy out of Big Bob, although less and less the bigger
+is he in proportion to small Bob, and he gains up to half of small bob’s energy level. In this
+model, he always gains some energy from eating another Bob.
+It should be easy to change this model within the code.
+If bm
+Bm ⩾2
+3, they ignore each other.
+77.4
+Perception
+Now that there are predators and prey in the world, it help to be able to avoid the ones and
+pursue the others.
+410
+Each Bob initially had a perception score Bp = 0 meaning that they are blind as bats – but
+without any cool echolocation either. Bp measures of course the distance at which they
+can determine whether a cell contains noting, food, or Bobs. It is the radius of the circle of
+detection.
+This is a genetic characteristic. Unlike speed and mass, we are going to keep that value
+integral, and mutate it by 0 or ±1, equiprobably.
+Since we are in a discrete world, some care will have to taken to compute those circles
+properly. Given that diagonal moves are disallowed, the notion of distance that matters is
+not actually that of the standard Euclidean geometry (ℓ2 norm), but the Manhattan distance
+(ℓ1 norm); in dimension 2, which is what we shall work in, it is computed as
+d1(A, B) = |xB −xA| + |yB −yA|
+Compare to the Euclidean distance:
+d2(A, B) =
+p
+(xB −xA)2 + (yB −yA)2.
+Circles in Manhattan geometry actually look like squares do in Euclidean geometry – with a
+π
+4 rotation, so, pointy-end up.
+At Bp = 1, all adjacent cells are detected.
+Up till now, The Bobs’ decisions have been purely random. Now, whenever they detect
+food, they make a beeline for it. Unlike in Euclidean geometry, there are many different
+shortest paths to take. Take the algorithm: so long as you’re not there, reduce either your x
+or y-distance, with same probability.
+Of course, if at any time Bob detects a new food source, while on its way to another, it should
+reevaluate its plan and make a beeline towards the closest one. If it detects several food
+sources, it should favour the bigger ones.
+By food sources, we mean both spawned food and unlucky smaller Bobs. Since how good a
+food source a prey Bob is depends on its energy level, and that a prey Bob may run away, a
+predator Bob will always favour stationary spawned food to other Bobs.
+When several prey Bobs are detected, the smallest ones will be favoured.
+When a Bob detects a larger Bob, it moves to maximise distance between the two. When it
+detects several larger Bobs, it moves to maximise the distance to the closest one, and, ceteris
+paribus, to the others.
+When a Bob detects prey and predators simultaneously, its prey behaviour overrides its
+predator behaviour: survive first, hunt second.
+Perception cost is not affected by either mass or velocity. It does require eyes and a big brain,
+though, which requires constant energy expenditures. (A human brain consumes about 20%
+of the body’s total energy.)
+411
+Let’s say that for each point of perception radius, there is a flat 1
+5 penalty (again, the GUI
+must allow this to be modified at will) to energy each tick. The consumption becomes:
+Bc
+= BmB2
+v + 1
+5Bp
+77.5
+Spacial memory
+A big brain has other uses. An important one is to remember the existence of stuff that’s not
+visible right now.
+Currently, unless they are making a beeline for some kind food, or running away, Bobs
+have a 1
+4 probability of going back where they just came from, which is not optimal to find
+spawned sources.
+Now, let’s introduce the inheritable characteristic memory space. Each Bob B has currently
+Bmem = 0 memory points. Again, this will remain an integral value, and mutate by 0, ±1,
+equiprobably.
+A Bob has several (mutually exclusive) ways to use its memory points:
+A Bob can remember the 2 × Bmem cells it visited, and hereafter avoid them, unless doing so
+would lengthen a path to food or escape.
+With higher priority than that, a Bob can use its memory points to remember a place where
+it saw spawned food not currently in its view. This can happen if a Bob detects two food
+sources at opposite ends of its perception, and goes towards the one, therefore losing sight
+of the other one. Or if it sees food while running away from a predator.
+It uses one memory point to remember one food location (therefore forgetting two of its
+oldest visited locations). It remembers the respective energy levels of the food.
+It only uses this point upon leaving sight of the food. The point is freed the instant a
+remembered food comes into sight again.
+While not pursuing food currently in its view (that has the priority, even if it remembers a
+larger food source farther away), or running away, a Bob will make a beeline for the largest
+food source it remembers seeing.
+The cost is again a flat penalty per point.
+Bc
+= BmB2
+v + 1
+5Bp + 1
+5Bmem
+77.6
+Other characteristics
+Each group should invent, define, and implement a few other characteristics; put your own
+spin on the subject. They should be explained in the report, and well-specified.
+412
+What I outline explicitly in this document should be construed as the bare minimum as
+expect from each group. Once that basis is assured, be creative. Your features must be
+deactivable, so that the jury can compared your projet to other groups under the same
+constraints.
+The is best achieved in the same style as the features listed above: set things up so that your
+features are governed by constants that, for some values (0, 1,. . . ) remove the feature from
+consideration.
+I would be delighted to see additions tackling the evolution of altruism, or aggression
+strategies (hawks vs doves), etc.
+It would be advisable to plan the more ambitious “freestyle” features somewhat in advance,
+and to consult me before investing significant time in them.
+77.7
+Sexual reproduction
+So far, Bobs have reproduced solely by parthenogenesis. Now, let’s add sex to the mix
+– though we will consider that Bobs are hermaphrodites, like snails, and not attempt to
+distinguish Bobs and Bobettes.
+On top of still having the option of parthenogenesis, when two Bobs B and C meet, and
+don’t eat each other, and have high energy levels Be, Ce ⩾150, they mate, losing 100 energy
+each, and creating a new Bob D at initial energy De = 100.
+Note that, compared to parthenogenesis, more total energy is invested into the new Bob,
+and it starts out with a higher energy level, but less is required from each parent. This is
+meant to model the advantages of shared parenthood.
+Of course all those values should be easily modified parameters.
+D has all his genetic characteristics set to the average of its parents, and then mutation is
+applied as usual.
+For those characteristics, such as perception, which are integral, the cleanest way to handle
+this is probably to actually store floating point values in the “genetic code” of Bobs, and
+round them to the nearest integer whenever you actually use them — but not during
+reproduction. That way, if B and B′ reproduce, with Bp = 1 and B′
+p = 2 then their offspring
+C will have, before mutation, Cp = 1.5. In practice, its perception shall be rounded to 2. But
+if C then reproduces with B, the offspring D will have perception 1.25; in practice, it will be
+rounded to 1. And so on.
+Sexual reproduction can be toggled on and off; parthenogenesis as well.
+It will be interesting to see the effects of this addition on the speed of adaptation to changing
+conditions.
+413
+78
+Save & Load
+The user must be able to save to file, and load from file,
+⋄the parameters of the game (N, P, etc)
+⋄the state of the game, that is to say, the state of each and every Bob in the game,
+including their perception, memory, strategy, etc.
+Those two aspects must be handled separately; one may want to change the parameters in
+bulk while the game is running. Probably the “state” save should also include parameters.
+Part X
+Archived Python Project 2022–2023: Avé
+INSA!
+The aim of the project this year is to implement a city-buildling (CB) game in the style of the
+Caesar game series, which I take to include Caesar I, II, and III, Pharaoh, Zeus, and Emperor by
+studio Impression Games, published by Sierra at the turn of the millennium.
+Specifically, we shall aim to produce little clones of (a subset of) Caesar III with the Augustus
+engine, (or maybe, for some groups, Pharaoh, Zeus, or Emperor). We shall endeavour to
+keep the subset thereof which is cloned as close as possible to the original.
+The features and level of polish expected will vary enormously between the FISA and FISE
+versions, with the FISA version being a much shorter project of smaller scope — five weeks
+in total, I believe, ending mid-December.
+FISE have, approximately, until the end of January.
+79
+Resources and brief overview of game principles
+79.1
+Resources
+⋄Teacher-provided resources: http://files.vhugot.com/Restricted/Caesar3
+⋄Game on Steam: https://store.steampowered.com/app/517790/Caesar_3/
+⋄Game on GOG: https://www.gog.com/en/game/caesar_3
+414
+⋄The Augustus engine: https://github.com/Keriew/augustus
+⋄Fan site: https://caesar3.heavengames.com/
+⋄FAQ on c3_model.txt (modding & game data extraction):
+https://gamefaqs.gamespot.com/pc/63635-caesar-iii/faqs/14466
+⋄Sprites Extractors:
+https://github.com/bvschaik/citybuilding-tools
+https://github.com/lclarkmichalek/sgreader
+http://pecunia.nerdcamp.net/downloads/utilities (.exe)
+Take note that the build instructions need updating.
+Fill in TARGET = sgreader in .pro file and use qmake-qt4.
+⋄References for housing levels:
+https://impressionsgames.fandom.com/wiki/Housing_(Caesar_3)
+https://web.archive.org/web/20060713205809/http://caesaralan.co.uk/strategy/
+houselevels.html
+⋄Blog by developers of a similar game, with interesting technical insights:
+https://nepos.games/nebuchadnezzar/blog
+79.2
+Running the game
+This game is a bit complex, and I don’t think there is a good substitute to playing its tutorial
+missions and reading the game’s manual and the in-game documentation.
+After obtaining the game files through whatever means suit you most, note the welcome
+presence of the Manuals folder. Then install Augustus following the instructions on github.
+We shall use Augustus as the reference implementation.
+The sprites used by the game are minuscule on today’s high-pixel-density screens. In the
+options, set “Display scale” to something suitably high. On my 1440p display, I set it to
+205%; on my 1080p, 155%. Avoid round values like 200%, because that obviates the need for
+smoothing, and make everything more pixelated than it needs to be.
+Leave all gameplay options on the defaults settings, which are closest to the original game.
+We shall focus on the buildings and mechanics from the original game, not those introduced
+in Augustus. An exception to that is the Roadblock building (present in later games,
+i.e. Pharaoh for roadblock, and Emperor for selective roadblock) and, as you wish, global
+labour pool (idem, starting with Zeus).
+79.3
+Overview of game principles
+The general principle is this: they are CB games inspired by historical civilisations. For the
+sake of this overview, we shall focus on the Roman civilisation and the mechanics of Caesar
+III, which is the main target of this project.
+415
+The player starts with an empty terrain, and can buy buildings to place on the map. The aim
+is to build a bustling city.
+The challenge revolves around the evolution of houses. When you buy houses, they are not
+immediately built. First, the terrain is marked as residential, and if the city is not unattractive,
+people will come from outside the map, to erect small tents and live there. “People” manifest
+as walkers, that appear at a specific point at the edge of the map, and follow the road to their
+destination.
+Tents provide room for few people, but those people have few needs, and you can put them
+to work. When you place a building that provides a service, it requires a number of workers.
+The unemployed in your population, if any, will apply to work. When the building has
+enough workers, it provides the service (possibly less efficiently if not fully staffed).
+To provide a service, a building usually generates one or several walkers, who follow the
+roads randomly for some distance, then go back to base. While they walk, they provide the
+service to nearby houses / buildings.
+For instance, a market will generate a merchant; when the merchant walks near a house, it
+replenishes the house’s stores of whatever they need, and depletes the stores of the market.
+Likewise, a doctor’s office generates a walker (doctor) that reduces the probability of plague
+in serviced housing, and so on.
+There are a few exceptions, where buildings directly influence an area around them, with
+no walkers as intermediaries. Gardens positively affect desirability in a small radius; wells
+make water available to nearby housing, etc.
+The gameplay structure is as follows:
+⋄set some houses, or rather tents; the people populating them can staff a few basic
+services.
+⋄once some of those services are available to the houses, they become more attractive,
+and evolve, for instance the tent may become a mud hut, which occupies the same
+space, but has room for more people.
+⋄those new people can staff new services and the industries they depend upon, thereby
+making parts of the city even more attractive, and causing the residences to evolve
+again.
+⋄the process repeats with a set sequence of needs, until the tents have been replaced by
+luxurious and dense residences, assuming all goes well.
+All does not always go well. Less than perfect coverage means some parts of the city could
+catch fire or fall victim to plagues, or go without some basic resource and regress. If some
+crucial industry is disrupted, then a need may no longer be met once stores run out. When
+that happens, housing may brutally devolve into lesser states, and evict many citizens for
+want of space.
+416
+And if that happens, then suddenly the city may no longer have enough workers to staff
+some other essential industry, thereby leading to a second wave of devolution, then a third.
+Homelessness favours criminality, which causes more fires and vandalism if the police
+coverage is inadequate. All of this makes the city unattractive, causing more citizens to
+leave and preventing new settlers from immigrating even if there is the space to do so.
+A badly built city may collapse like a house of cards at the first crisis, unless judicious
+emergency actions are taken (like shutting down luxury industries to ensure a steady supply
+of workers for the necessities).
+Building a city well means taking a lot of constraints into account when placing buildings, to
+ensure that all required walkers have predictable paths and that there is a level of redundancy.
+It would be a shame to see a city collapse because a fireman chose to go left three times
+in a row, thereby allowing a fire to kickstart a death spiral for the city. Since the luxury
+villas house far fewer people than the high-density housing they replace, even a successful
+transition towards a patrician neighborhood, when badly-handled, may kickstart shortages
+that may spiral out of control!
+And then there is the money; you spend it to make buidings, pay your workforce, throw
+festivals, import what you can’t or would rather not produce yourself, and you get it back
+through taxes and trade with nearby cities. If you run out of it, it’s bad; if your taxes are too
+high, the people will grumble and eventually leave.
+There are, in Caesar III, dozens of building types and services.
+Quoting from the manual:
+To reach its highest level, housing needs access to a nearby market supplied with
+four different foods, pottery, oil, furniture and two varieties of wine. Regular
+visits by workers from a bathhouse, a doctor’s clinic, a barber’s shop, a priest
+of each god’s temple, and representatives of a school, academy, library, theater,
+amphitheater, colosseum and hippodrome are also required. If you can supply
+all of these goods, and access to all of these buildings, then reaching the highest
+values is simply a matter of enhancing desirability. Right- click on housing to
+discover why its growth is stagnant. The panel that appears shows what the
+house lacks, or the nearest negative influence on its desirability.
+Furthermore, there is a sophisticated administration interface (that gets even more sophis-
+ticated in later games!) to control the priorities of the various building types in terms of
+staffing: who gets the available workers in case of shortage, and in what proportions?
+Buildings may also be “paused” on a case by case basis. It all gets rather complex.
+This is, in the end, an exercise in Python programming, not in game design. Keep things
+relatively simple, at least at first. If you can make the game work with a couple of services
+and house types, then you can theoretically make it work with a dozen; the technical
+challenge is essentially the same. Only take the time to refine the “game” aspect once the
+417
+technical ones are solid.
+Stick with Caesar III and its mechanics, with few exceptions like maybe convenient features
+from later games such as selective roadblocks, and implement them in order: basic needs
+first, and the industries required to sustain them. Use the game’s sprites for graphics. Do
+not skip steps in those needs, or oversimplify them. This will simplify the comparison of
+how far different groups went.
+If I see patrician villas, I should know that you have implemented grapes and wine industries
+and distribution, because that is a requirement in the original game.
+However, you may simplify or omit things outside of the “main path” of the game, which I
+consider to be housing. For instance, the mood of individual gods, or Caesar’s favour, may
+be done without. The need for water or oil may not.
+The precise needs for different levels of housing are given in c3_model.txt.
+80
+Expected features
+Features marked as A or E are required of FISA or FISE, respectively. Features marked as a
+or e are partly required, or optional but recommended.
+The main difference between what’s expected of FISE and FISA is the complexity of the
+game mechanics. The the game works with just one type of houses and one service, it’s
+enough for a good project in FISA, but will be considered the bare minimum in FISE.
+The text may offer more nuance on what should be implemented and suggest simple
+approaches to satisfy the requirement without too much pain, or more advanced approaches
+for those who want to show off their skills.
+Both simple, conservative choices, implemented very competently, and more ambitious
+ones, even not fully realised in the implementation — but realised enough to showcase their
+potential — can result in excellent marks. Choose tactically.
+Any feature not marked as required is entirely optional.
+(1) AE: Done in Python 3.
+In case there was any doubt, this is a Python project. . .
+You may need to use some older version of Python (3.7, 3.8,. . . ) for compatibility with
+some libraries or dependencies that may not be updated very frequently, like PyGame.
+(2) AE: GUI framework of your choice
+The game should of course have a GUI.
+You may choose
+418
+⋄PyGame, https://www.pygame.org is the most common choice among students
+for this type of projets.
+⋄the Arcade Library
+https://api.arcade.academy
+https://learn.arcade.academy.
+Very fresh, but active; a few groups used it and had a good experience.
+⋄TkInter,
+⋄PySimpleGUI (with TkInter backend only; simpler to begin with)
+⋄PyQt5 or PyQt6 (more powerful, more complex, external requirements (ce))
+⋄wxPython,
+https://www.wxpython.org
+Bindings to wxWidgets, similar to PyQt.
+⋄PursuedPyBear,
+https://ppb.dev
+This one seems very fresh out of the oven, and not documented.
+⋄Kivy,
+https://kivy.org
+⋄or anything that works with Python, really, I’m not picky, what matters is the
+result.
+Test the different possibilities, and choose wisely.
+Based on previous experiences, and the nature of this project — especially the RTS
+aspect — I think PyGame is the safest choice for this project, in that most groups in
+previous years have used it and done satisfactory things.
+PursuedPyBear seems too fresh.
+PyGame is far from perfect, so I’m exceedingly interested in hearing from you if you
+make something else work.
+I haven’t seen wxWidgets used in projects, but it ought to be nearly as mature and
+usable as PyQt.
+(3) AE: Graphical representation of the map.
+The map must be represented graphically, ideally in a near identical way to Caesar III
+if possible.
+The view may be 2D, top-down, using sprites (by far the simplest option — you
+can even have a terminal-based one as a fallback and to develop the logic before a
+more sophisticated rendering engine is available), isometric 2.5D (as in Caesar III;
+similar views have been consistently achieved by most groups year after year in similar
+projects, so it is really recommended), or full 3D (do not even attempt this unless you
+(ce)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+419
+already have considerable experience with a suitable framework. Tests have been done
+last year with Ursina and Panda3D, but neither has been found suitable for use in this
+project).
+If you go the 2D route, note that fan sites have a collection of 2D sprites which can
+probably be downloaded and used.
+For 2.5D, the original sprites of the game should be used — note that, for copyright
+reasons, this severely restricts the diffusion of your project.
+(4) aE: Sprite Upscale x2
+If you use the original sprites of Caesar 3, you will notice that they are very small by
+today’s standards, and can’t really be used at native resolution.
+I recommend using an AI upscaler such as waifu2x-ncnn-vulkan, and whatever image
+manipulation operations you deem necessary, to double their size.
+This has the added benefit, from my point of view, of making sure you cannot simply
+use the Julius and Augustus projects as rendering backends, since they won’t work on
+differently-sized sprites.
+(5) AE: Save and load. Pause.
+Those games can be loooong. You must be able to save the game state whenever you
+want, and load it without loss of information. That includes the state of every walker
+and building etc.
+This will be extremely important for the defense, as you will not have time to play
+several full games during the demonstration. Instead you will load saved games, taken
+at interesting points of the life of your cities, and from those specific points you can
+add or remove buildings, shutdown or activate industries, and thus demonstrate the
+impact of those actions upon your city.
+The quality of your defence plays a huge role in your final mark, not because it is
+evaluated as such, but because it determines what the jury understands of your project.
+Consequently, you must anticipate features of the game which make showing it off
+easy. Save and load is one of those. Being able to pause the game would be another.
+You may think of other things in the same vein. Do not hesitate to implement them
+and discuss it with me.
+(6) AE: Faithful Caesar III mechanics and sprites.
+I would really appreciate it if you would all use the same sprites as the original game,
+as much as possible, and implement clear subsets of the mechanics of the game. This is
+not to stifle your creativity, but to facilitate quick understanding of what you are doing.
+If all groups use the same kind of units, buildings, and mechanics, with somewhat the
+same balance, it becomes easier to understand at a glance what’s going on, and how
+420
+two groups differ. This is especially crucial during the defence.
+You have a very short time in which to show off your work — if much of that time is
+spent explaining that your drones need to mine unobtainium to build starships, rather
+than mine clay in order to make pottery, in the end that is time not spent showcasing
+how many features you support and how fast the game runs, which is probably not to
+your advantage.
+Instead, if everybody uses the same basic concepts and vocabulary, some level of
+background knowledge can be assumed and we can quickly concentrate on the aspects
+that truly differentiate the groups. Water and oil and clay all play the same role for
+everybody, because everybody copies Caesar III, and we all know what we are looking
+at.
+That being said, if you absolutely yearn to make a space-themed CB game, or a
+fantasy-themed game, or a horror-themed game (please, not that one), I will not
+explicitly forbid you from doing so, but be aware that you will need to communicate
+your mechanics extremely efficiently, and convince the jury that they are more or less
+equivalent what is expected.
+Either way, sprites should be as recognisable as possible. I shall try and provide them
+in a convenient package.
+Of course, as stated before, the point is not to re-implement everything. It is to implement
+a well-chosen subset, avoid having to reinvent game balance from scratch, and facilitate
+communication. Start with the basic aspects of the game, following the tutorial, and
+taking values (price of buildings, number of workers required, distance walked by the
+walkers,...) from gamefiles and wikis. Tweak only when you need to. Again, this is
+not a game design course; the game is a pretext for coding.
+Do not needlessly deviate from Caesar III mechanics and values: this is a complex
+game, whose balance rests on carefully tweaked numbers. Balancing all the constraints
+may simply not be possible or fun if some numbers change. Experimenting with many
+sets of gameplay parameters is not a tactical investment of your energy.
+Again, if that tickles your fancy to be original and go with different units, I’ll technically
+allow you to do that, in the same sense as I’ll allow you to shoot yourself in the foot. At
+the end of the day, it’s your foot. I just don’t recommend that course of action.
+If you simply must differentiate your project from the other groups, perhaps targeting
+a faithful copy of another game of the same series (Pharaoh, Zeus, Emperor) would be
+the safest bet.
+The main risk I see here is that it is still more explaining to do to the jury, in particular
+the “candide”, who might just be getting familiar with C3, but not with the other games.
+The second risk I see is that I have fewer resources to provide to help, and there is
+nothing equivalent to like Julius or Augustus for those games. Those risks are still
+421
+manageable overall.
+Regardless, if you plan on deviating from C3, please talk to me about it during the lab
+classes.
+(7) AE: Real-Time Aspects.
+Note that such a game is inherently “real time” in the sense that there are no discernible
+turns.
+The many buildings and citizens and walkers of the city live their lives
+simultaneously, and the city must remain reactive to any action taken by the player at
+any time.
+This real time aspect can be tricky to implement correctly. You will need a well
+thought-out architecture and probably some form of concurrency (multithreading,
+multiprocessing,. . . Sec. 31[p224]: “Parallelism and concurrency”) which you will have
+to figure out on your own, since that is mostly taught during the second semester.
+You can also try doing most everything in one thread, but it has its own difficulties:
+if the main game loop is not fast enough, you will have terrible input lag, dropped
+inputs, and more.
+Libraries like PyGames usually offer examples and propose standard ways of handling
+inputs, event queues etc. By starting from pertinent examples, you should be able to
+get things working.
+I thought this aspect ambitious last year, when I gave my first RT-based project (the
+previous ones were either turn-based or radically different types of work), but to my
+surprise and delight, no group had much trouble with it.
+FISA:
+Keep the game very simple and lean so that any architecture can be made to work. For
+instance, if animating your sprites becomes a problem, then just don’t animate them.
+(8) aE: Walker visualisation
+Caesar III offers a variety of views of your city, each focused on one industry or service.
+For instance, one view lets you see water coverage, and related walkers, while hiding
+all other aspects. You must (FISA: should) implement such a view for each of the
+aspects you introduce in your project. Again, this is essential (FISA: useful) for a good
+defence, as it is otherwise difficult to quickly showcase one particular mechanic —
+especially if you have implemented many of them.
+(9) e: Variable Speed
+Saved games help you show off specific game configurations, but to really get an idea
+of the flow of the game, it is best to see the city evolve. But we don’t have time for that
+in a defense.
+422
+Thus, it would be helpful if the speed of the game could be changed — specifically
+increased — so that we can see the town react on fast-forward.
+Of course, how fast the game can run when at full speed will depend upon both your
+machine and the quality of your implementation. Thus, for the defense, you can also
+prepare time lapse videos showing the relevant points.
+Note that this can be complex to get right, as it divorces real time from game time. If
+you want that feature, you should plan for it from the start; adding it post facto is liable
+to break things badly.
+(10) No procedural map generation.
+Caesar III has fixed maps, designed in an editor. For that type of game, where one stays
+hours on the same map, and the exact shape of the map is an important factor to the
+difficulty, this is enough. There is no need to implement procedural map generation.
+(11) e: Trading
+Have neighbouring cities with which to trade specific goods, as in CIII.
+(12) e: Administration
+Implement some degree of global control over your city to adjust tax levels, industry
+priorities, visualise service coverage (this is the most important part, as discussed
+previously), and so on.
+(13) Disasters and Invasions/War
+There are some combat mechanics in CIII; you can implement them if you want.
+(14) Gods and favour of Caesar
+Beyond providing services, temples also serve to appease the gods, who might send
+a disaster your way if they feel neglected. Likewise, Caesar may attack you if you
+mishandle your treasury too much.
+It would be interesting to implement those aspects, but they are not at all essential.
+Focus first on more visible services and industries, and their walkers.
+423
+Part XI
+Archived Python Project 2021–2022: Age of
+Cheap Empires
+The aim of the project this year is to implement a strategy game in the style of the Age of
+Empires game series — specifically, the first two. The first one being simpler, it seems a better
+starting point.
+The features expected will vary enormously between the FISA and FISE versions, with the
+FISA version being a much shorter project of smaller scope — five weeks in total, I believe,
+ending mid-December.
+FISE have, approximately, until the end of January.
+81
+Resources and brief overview of game principles
+81.1
+Resources
+If you are familiar with those games, splendid. If not, it should go without saying that you
+do not need to buy or play any of these games. You can get all relevant information by
+watching videos of AoE I and II on the internet, and consulting the wiki or the official site:
+⋄https://ageofempires.fandom.com/wiki/Age_of_Empires
+⋄https://ageofempires.fandom.com/wiki/Buildings_(Age_of_Empires)
+⋄https://ageofempires.fandom.com/wiki/Units_(Age_of_Empires)
+⋄https://ageofempires.fandom.com/wiki/Technology_(Age_of_Empires)
+⋄https://www.ageofempires.com/tech-tree/greek/
+The wiki shall serve as a reference document on technologies, unit types and statistics, etc.
+For a more hands-on look on that genre, you can install 0 A.D., a game originally made as a
+mod for Age of Empires II, now entirely free software. You can install it on most modern
+Linux distributions with a single command; for instance, for any Debian-based system,
+sudo apt install 0ad
+will do the trick. 0 A.D. is its own thing, with its own unique mechanics, but remains
+extremely similar in look and feel to AoE I and II, so it can give you a general idea of how a
+game like that plays.
+424
+For large screens, you may want to create a file ~/.config/0ad/config/local.cfg contain-
+ing a line of the form gui.scale = "1.875", to scale up the GUI elements, including the
+fonts — here by a factor of 1.875, to replace by what works for you.
+I am hoping that enough students will have played an AoE game before — or at least some
+similar RTS game — that I can affect one per group, and that they can serve as “RTS experts”
+within the group. If not, too bad, but it should not be much of a problem.
+81.2
+Overview of game principles
+The general principle is this: they are real-time strategy games (RTS) inspired by historical
+civilisations and battles, where players control units on a map. Several players share a map;
+the last one standing wins.
+You start with villagers and a Town Center.
+Villagers can acquire resources: they can forage, hunt, fish, or farm for food, fell trees for
+wood, and mine for gold or stone — all of which takes time. Once they drop resources at the
+town center (or other compatible drop points), the player can use them.
+For instance, for 50 food, the town center can create a new villager — a process that takes
+20 (cf) to 25 (cg) seconds, and during which the town center cannot create other units or research
+technologies. A technology is researched at a building, and changes some aspect fo the
+civilisation, generally for the better: given access to new buildings or types of units, improve
+existing units, etc.
+Villagers can also build new buildings (ch) — which costs wood, and even stone for things
+like castles. They are poor fighters, though. If you want a fighting force, build a Barracks,
+and train soldiers there. They cost food, along with wood for archers, pikemen etc, and some
+gold. The more powerful units are usually more gold intensive. Cavalry units (the horse is
+not treated as separate) are also quite food-intensive. There is a kind of rock-paper-scissors
+relationship between the different unit types. For instance archers are generally good against
+infantry, that tends to die before getting to them and be vulnerable to shoot and run tactics,
+but weak against cavalry. Some units have special bonuses against others; for instance, in
+AoE II, the dirt-cheap Pikemen infantry line has massive bonuses against cavalry, reflecting
+the historical fact that cavalry charges fare poorly against rows of long, pointy sticks.
+There is a population cap: 50 in AoE I, 200 in AoE II — and I believe it can be set up to 500
+in AoE II Definitive Edition, but I never heard of anybody plays with those settings. The
+(cf)AoE I
+(cg)AoE II
+(ch)In AoE, military units cannot build anything — with the exception of the Sicilian Serjeant, a unique unit
+introduced in 2021.
+In 0 A.D., from what I have seen, military units are also builders — and only they can build military buildings.
+I’d prefer sticking with AoE villagers in your game.
+425
+difficulty of the game is to balance your economy (villagers gathering resources) and your
+army.
+There are limited resources on the map — how much exactly depends on the map type
+and on random generation. Most maps include a gold and a stone mine not far from your
+starting position. Others you find by exploring the map; or other players find them before
+you. They contain a fixed quantity of the resources; when they are depleted, that’s it. Tree
+don’t regrow — though there are a lot of them, — nor do the berry bushes, or the animals.
+Farms can be planted, that generate a lot of food (though still a fixed quantity) for a modest
+wood investment. They are the main source of income starting midgame.
+In a typical game, stone and gold run out late-game. Wood doesn’t, typically, and if wood
+doesn’t, neither does food. But it may on some map type: in a map comprised of very small
+islands, there may not be a lot of wood available, which constrains the use of a large navy. . .
+The games offer a fairly large number of civilizations. They are, however, symmetric RTS,
+since the all civilisations share the same units and technologies, with only minor variations
+(and one or two unique units in AoE II). This is opposed to asymmetric RTS like Starcraft,
+with fewer factions, each with entirely different building, units, resources, and strategies. (ci)
+In our small project, we can pretty much ignore the “multiple civilisations” aspect. One is
+enough, provided it has access to enough unit archetypes — e.g. infantry, cavalry, archery,
+siege, priests/monks (cj), perhaps a navy — to enable different strategies. At least two of those
+would be nice.
+The most important technology available to a player is “going up an age”. AoE I for instance
+has the Stone Age (starting age), Tool Age, Bronze Age, and Iron Age. Moving up the ages is
+expensive, but essential, as in unlocks a large number of buildings, units, and technologies,
+as well as upgrading existing buildings and units.
+You may include such a mechanic if you have time, but it is not absolutely essential. This is,
+in the end, an exercise in Python programming, not in game design. Keep things relatively
+simple, at least at first. If you can make the game work with one age and two military unit
+types, you can also make it work with four ages and five types: the technical challenge is
+essentially the same. Only take the time to refine the “game” aspect once the technical ones
+are solid.
+(ci)AoE IV is not released yet, but it seems to be designed as an asymmetric RTS, to a large extent. Which I
+approve, because having the same “armored guys with two handed swords” as infantry in European, Arabic,
+and Mesoamerican civilizations was a bit jarring. It was not a problem in the original release, with only
+European civilisations, but twenty years and twenty-two new civilisations later, it looks a bit weird (even if the
+Unique Units help in that regard).
+(cj)They can convert enemy units. . .
+426
+82
+Expected features
+Features marked as A or E are required of FISA or FISE, respectively. Features marked as a
+or e are partly required, or optional but recommended.
+The text may offer more nuance on what should be implemented and suggest simple
+approaches to satisfy the requirement without too much pain, or more advanced approaches
+for those who want to show off their skills.
+Both simple, conservative choices, implemented very competently, and more ambitious
+ones, even not fully realised in the implementation — but realised enough to showcase their
+potential — can result in excellent marks. Choose tactically.
+Any feature not marked as required is entirely optional.
+(1) AE: Done in Python 3.
+In case there was any doubt, this is a Python project. . .
+You may need to use some older version of Python (3.7, 3.8,. . . ) for compatibility with
+some libraries or dependencies that may not be updated very frequently, like PyGame.
+(2) AE: GUI framework of your choice
+The game should of course have a GUI.
+You may choose
+⋄TkInter,
+⋄PySimpleGUI (with TkInter backend only; simpler to begin with)
+⋄PyQt5 or PyQt6 (more powerful, more complex, external requirements (ck))
+⋄PyGame,
+https://www.pygame.org
+⋄wxPython,
+https://www.wxpython.org
+Bindings to wxWidgets, similar to PyQt.
+⋄Kivy,
+https://kivy.org
+⋄the Arcade Library
+https://api.arcade.academy
+https://learn.arcade.academy
+⋄PursuedPyBear,
+https://ppb.dev
+This one seems very fresh out of the oven, and not documented.
+(ck)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+427
+⋄or anything that works with Python, really, I’m not picky.
+Test the different possibilities, and choose wisely.
+Based on previous experiences, and the nature of this project — especially the RTS
+aspect — I think PyGame is the safest choice for this project, in that most groups in
+previous years have used it and done satisfactory things.
+PursuedPyBear seems too fresh, and I have never had any group try Kivy or the Arcade
+— but then again, I have never explicitly proposed them before.
+PyGame is far from perfect, so I’m exceedingly interested in hearing from you if you
+make something else work.
+I haven’t seen wxWidgets used in projects, but it ought to be nearly as mature and
+usable as wxWidgets.
+(3) AE: Graphical representation of the map.
+The map must be represented graphically.
+The view may be top-down, using sprites (by far the simplest option), isometric 2.5D
+(à la Baldur’s Gate; an ambitious choice, though not too complex compared to 2D if
+done well), or full 3D (do not even attempt this unless you already have considerable
+experience with a suitable framework. Tests have been done last year with Ursina and
+Panda3D, but neither has been found suitable for use in this project).
+(4) AE: Save and load.
+Those games can be long. You must be able to save the game state whenever you want,
+and load it without loss of information. Note that,if you have an AI, that includes
+what the AI knows about the world, and more generally its state of mind (planning an
+attack, game plan, etc).
+This will be extremely important for the defense, as you will not have time to play
+several full games during the demonstration. Instead you will load saved games, taken
+at interesting points of various games, to show off big battles, AI gameplan, etc.
+(5) ae: AoEI-adjacent “antique” theme and units.
+I would appreciate it if you would stay with roughly the same theme an units as AoE I.
+This is not to stifle your creativity, but to facilitate quick understanding of what you
+are doing.
+If all groups use the same kind of units, buildings, and mechanics, with somewhat the
+same balance, it becomes easier to understand at a glance what’s going on, and how
+two groups differ. This is especially crucial during the defense.
+You have a very short time in which to show off your work — if much of that time is
+spent explaining that your drones need to mine unobtainium to build starships, which
+428
+are weak to laser attacks but strong against Psykers, . . . in the end that is time that
+is not spent showcasing how smart your AI is and how fast the game runs, which is
+probably not to your advantage.
+Instead, if everybody uses the same basic concepts and vocabulary, some level of
+background knowledge can be assumed, we can quickly concentrate on the aspects
+that truly differentiate the groups.
+That being said, if you absolutely yearn to make a space-themed game (cl), or a fantasy-
+themed game, or a horror-themed game (please, not that one), by all means do so, but
+be aware that you will need to communicate your mechanics extremely efficiently, and
+convince the jury that they are more or less equivalent what is expected.
+Either way, sprites should be as recognisable as possible. If you can find AoE I or II’s
+own sprites somewhere, whether from the original or “Definitive” editions , that’s
+perfect.
+You can and should also dip into the wiki, linked above, for ideas as to units and
+technologies.
+Of course, the point is not to re-implement everything. It is to avoid having to reinvent
+game balance from scratch. Pick a few units, lift the health, attack values, cost, creation
+time etc from the wiki, and start from there. Tweak only when you need to. Again,
+this is not a game design course; the game is a pretext for coding.
+You can go nuts with game design when your engine is solid; spending too much time
+pondering how many hit points and armor your hoplites should do is not a tactical
+investment of your energy.
+Again, if that tickles your fancy to be original and go with different units, I’ll allow
+you to do that. I just don’t recommend it.
+(6) aE: Human vs. AI match.
+This is a game of war. What is war without an opponent? Since multiplayer is an
+entirely different kettle of fish (cm), you will need to implement some kind of AI.
+For FISE, it is expected — or at least hoped — that an AI can take control of a civilisation,
+exactly as the player does — preferably without cheating, but if you must, you can
+give it extra resource or a discount. . . If you do, however, you must include an option
+or difficulty setting to disable that.
+Regardless, it must have a recognisable game plan: gathering resources, building stuff,
+researching technologies, training units, mounting assaults.
+(cl)Star Wars Galactic Battleground (2001) is precisely AoE II with a Star Wars skin.
+(cm)It is quite possible that you will be called upon to add multiplayer functionality to the game during the
+next semester, as part of the Network Project. I haven’t talked to Mr. Toinard about this yet.
+429
+To understand what it means to have a game plan, you can learn from good AoE
+players: there is a general consensus on what you should do at the beginning of a game
+to ensure a good position — a concept similar to overtures in Chess. What should the
+villagers gather in priority, what should they build and when, to optimise the early
+economy. For instance, this video covers the beginning of the game for AoE II. You can
+try and do something similar for your own game, and implement it as an AI strategy.
+For FISA — or for FISE who are in over their heads — you should probably keep things
+simpler, and have an opponent that plays by different rules. You could have savages or
+raiders or demons or what have you spawn from special buildings — let us call them
+Hell Gates — at an increasing rate, and from time to time they all converge upon your
+buildings and kill everything in sight, then, for a change, burn everything in sight. No
+resource management needed, nor any particular intelligence beyond untrammelled
+aggression — and maybe the good sense not to leave to Gates undefended.
+The aim of the game becomes to find and destroy the Gates before being overwhelmed
+or running out of resources.
+In what follows, we shall speak of “AI” only if the computer emulates a human player,
+playing by the same rules (+/- mild cheats).
+(7) ae: Real-Time Strategy.
+FISE:
+The real time aspect can be tricky to implement correctly. You will probably need
+a good architecture and some form of concurrency (multithreading, multiprocess-
+ing,. . . Sec. 31[p224]: “Parallelism and concurrency”) which you will have to figure out
+on your own, since that is mostly taught during the second semester.
+You can also try doing everything in one thread, but it has its own difficulties: if the
+main game loop is not fast enough, you will have terrible input lag, dropped inputs,
+and more.
+That is not to say it is impossible for you to get an RTS working, only that it seems
+ambitious. Libraries like PyGames usually offer examples and propose standard ways
+of handling inputs, event queues etc. By starting from pertinent examples, you should
+be able to get things working.
+However, let us note that it is in fact the first time I propose a Python project that is not
+intrinsically turn-based. That makes you pioneers, boldly going where no third-year,
+first semester STI student has gone before. That, or guinea pigs. Depending how you
+look at it.
+If you fancy yourself neither a pioneer nor a lab rat, you may want to adapt the game
+to be somewhat turn-based.
+FISA:
+430
+Keep the game very simple and lean so that any architecture can be made to work. For
+instance, if animating your sprites becomes a problem, then just don’t animate them.
+Or, you can go with a barebones turn-based adaptation of the game, played with much
+fewer units on a much smaller map; a bit like a chess game.
+(8) Variable Speed — if RTS
+Saved games help you show off specific game configurations, but to really get an idea
+of how your AI works, it is best to see a game in full. But we don’t have time for that
+in a defense.
+Thus, it would be helpful if the speed of the game could be changed — specifically
+increased — so that we can see the AI build its town, mount its assaults, and react to
+your own, all at a reasonable pace.
+Of course, how fast the game can run when at full speed will depend upon both your
+machine and the quality of your implementation. Thus, for the defense, you can also
+prepare time lapse videos showing the relevant points.
+Note that this can be complex to get right, as it divorces real time from game time. If
+you want that feature, you should plan for it from the start; adding it post facto is liable
+to break things badly.
+(9) ae: Procedural map generation.
+AoE generates its maps randomly, following a set of constraints regarding starting
+positions, resource allocations, terrain and elevation, etc.
+You should probably do something like that. That said, it is not essential, so you should
+start by creating a single map, and getting things working on it first.
+Map generation is not essential, but is a nice addition and should be very simple to
+implement and integrate, while adding spice to the game — especially combined with
+fog of war. Thus it is recommended, if you have time.
+(10) e: Fog of War
+AoE uses a fog of war: the map is revealed by your units, and enemy units are only
+visible while in the line of sight of one of your own.
+This is nice to have, but not essential to the game.
+Note that if it is implemented, then the AI must obey the same rules as the player,
+and not gain any information from what happens outside its visibility. This is not
+trivial to implement correctly, and even less so to assess in a defense — how does one
+differentiate between AI knowledge and guesses? . . . especially while the AI is itself
+hidden under our fog of war.
+(11) Replay games
+431
+Likewise, beyond save games, that preserve the state of the world at a given time t,
+you could try saving “replays”, that save the game at every time, and enables us to
+replay it like a video, but in the game engine.
+Of course, the implementation would not make 100 normal saves a second. The idea
+instead would be to save the commands sent by each player during the course of the
+game, and resend them with exact timing.
+That relies on the game engine being entirely deterministic.
+Not such a simple
+assumption, especially combined with real time aspects. Even if perfectly implemented,
+such recordings break at the slightest change in game logic — notice that nearly
+every game offering such features announces with each update that old replays are
+incompatible with the new version — AoE II and Tekken 7 are examples of such games.
+That means that if you fix a bug in, say, the AI, just before the defense, your replays
+may — and likely will — break.
+For those reasons, pursuing this feature is not recommended.
+(12) e: More than 2 players.
+The minimum that must be implemented is Human vs AI, and since we eschew
+multiplayer, there is at most one human player. AoE games support up to 8 players.
+You can do the same if you wish. Human vs 7 AI can be fun.
+If you do so, implementing diplomacy to create factions would be relevant.
+https://ageofempires.fandom.com/wiki/Diplomacy
+If you do that, you will probably need to have different map sizes.
+(13) e: AI vs. AI. Let them fight!
+Gaming is hard work. Sometimes, you just want to watch a good war, but leading an
+army is too much work.
+If you have a working AI, there should be nothing preventing you from creating a
+game with only AIs, and watch them duke it out.
+(14) Civilisation variety.
+AoE games implement a great many civilisations, each with different technology trees,
+bonuses, and unique units (in AoE II).
+As discussed in the overview, I do not advise emulating that. One civilisation is quite
+enough, provided it is a bit versatile.
+(15) ae: Ages.
+“Aging up” is the most important technology in the AoE games. Gameplans revolve
+around the trade off of aging up now for a power boost, at the cost of resources and
+432
+time, or using the resources to mount a raid against your opponent, in the hope of
+ruining their economy and delaying their own capability to age up.
+Having something like that would be nice, but is not absolutely essential for the project.
+If you do implement ages, just go with two of them rather than four or more. At least
+that is my advice unless you already have an extremely solid engine.
+(16) aE: Starting resources.
+You should be able to start a game with varying quantities of resources, not just the
+default. Ideal, you could even tweak this per player, making this a very cheap, but
+very effective way to control game difficulty.
+Letting the AI start with lots of resources can be a good way to showcase its game plan.
+(17) AE: Cheats and AI commands.
+AoE has many fun cheats. Cheat codes in games are not just there for the benefit of
+players, however. They are useful to test the game. Here are the cheat codes that you
+should implement (lifted directly from AoE I and II)
+⋄NINJALUI: get 10000 of each resource.
+⋄BIGDADDY: spawn very powerful unit at town center.
+⋄STEROIDS: training, building, research, foraging, farming, and mining times are
+instantaneous. . . for all players, not just you.
+⋄REVEAL MAP: Reveal the entire map, exactly as though you had explored it,
+which means that enemy units are not revealed, while trees, and stone and gold
+mines are. Enemy buildings are not revealed. Issuing the command again toggles
+effect.
+⋄NO FOG: Remove the fog of war. Any explored part of the is therefore fully
+visible as though under the line of sight of your units. Issuing the command again
+toggles effect.
+Additionally, you should have a few commands to influence the AI, force it to launch
+an immediate attack, check its state of mind, put your civilisation on autopilot, or
+simply exchange the civilisations you and the enemy AI control.
+The idea is that you should have commands that enable you to debug and show off
+your AI. What commands those are will depend on your AI.
+433
+Part XII
+Archived Python Project 2020–2021:
+Dungeons & Dunces
+83
+Overview
+The aim is to create a Computer Role-Playing Game (cRPG) loosely based on an extremely
+simplified version of the D&D 3.5 or Pathfinder first edition ruleset, in the style of games
+such as Baldur’s Gate, Neverwinter Nights, Pathfinder: Kingmaker, etc.
+The following links offer exhaustive references to the rulesets in question.
+https://www.d20srd.org/index.htm
+https://www.d20pfsrd.com/
+The Pathfinder system is preferred where these differ, but the DnD page is linked as well
+because it is a bit simpler to read and navigate in my opinion. They are very similar in any
+case.
+If you are completely unfamiliar with those systems, or with RPGs in general, take a few
+minutes to read up on the general principles, or better yet talk with a fellow student with
+experience in such games before reading on.
+The focus will be on a dungeons crawling for a small (3 max), low level (level ≈1-5) party,
+with classes covering at least the three archetypes: Fighter, Mage, Rogue.
+84
+Features, Required and Optional
+Any feature not marked as optional is required.
+(1) Done in Python 3.
+In case there was any doubt, this is a Python project. . .
+(2) GUI framework of your choice
+The game should of course have a GUI.
+TkInter (simpler to begin with) and PyQt5 (more powerful, more complex, external
+434
+requirements (cn)) are two possibilities for building it. I hear good things about PyGame
+as well.
+(3) Graphical representation of the map.
+The maps must be represented graphically.
+The view may be top-down, using sprites (by far the simplest option), isometric 2.5D
+(à la Baldur’s Gate; an ambitious choice, though not too complex compared to 2D if
+done well), or full 3D (do not even attempt this unless you already have considerable
+experience with a suitable framework).
+(4) Grid or no grid, that is the question.
+The game will need to solve whether two units are in contact, how much space they
+occupy, whether they are in range of some effect or ability, and how they move.
+To do so, you can use a grid, which can traditionally be square or hexagonal, or simply
+compute the Euclidean distance within a floating point Cartesian coordinate system.
+The latter is recommended. Grids are only used in tabletop games because gamers are
+not keen on computing squares and square roots by hand multiple times every round.
+With the help of a computer, this is no longer a problem.
+(5) Level / Campaign editor.
+The user must be able to build his own dungeons / maps, possibly involving multiple
+levels and connectivity between them, and them play them.
+It is not required that the user can implement complex logic in the campaign, e.g. set
+triggers, handle quests etc.
+It is required that levels can be built, connected to one another, and populated with
+enemies, NPCs, traps, and treasure, fixed or random to some extent. In that case, the
+campaign is simply a dungeon crawl.
+(6) Save and load
+Of course, the player must be able to save his game – at least outside of combat – and
+load the game later.
+(7) Random level / maze generation. (Optional but strongly recommended)
+One approach can be to build a fairly impressive, static campaign to show off the game
+engine’s capabilities.
+Another would be to generate levels randomly, Roguelike-style.
+(cn)https://pypi.org/project/PyQt5/; cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour
+de la documentation C++. C’est à adapter à la version Python, car PyQt5 est juste une bibliothèque de liens
+(bindings) vers Qt5.
+435
+The two approaches can be mixed as well; for instance, a campaign could well be static,
+but include, at some point, a maze that is procedurally-generated, to catch returning
+players off-guard.
+(8) Exploration and line of sight.
+Maps can be pre-explored, under fog of war, or completely unexplored when the party
+first enters it. The unexplored map is revealed as the party moves, taking into account
+the lines of sight of all.
+Mobile units are only visible if a member of the party can see them.
+Of course, you need to provide a map / minimap of the current level to the player,
+respecting fog of war rules.
+For bonus points, allow the player to consult the maps of previously visited levels the
+party is not currently in, and to put their own notes and points of interest on the map.
+(9) Last known position (Optional).
+If the party loses sight of a mobile unit, there may be an option to display a “last known
+position” marker for that unit on the map.
+If you go for “advanced AI”, you will need at least enemy units to remember where
+they last saw the party, so as to mount ambushes etc.
+Note that, for all intents and purposes, the player party is treated as a single unit for
+the purpose of line of sight, knowledge of the map and enemy positions, etc. That is to
+say, for instance, whatever the Fighter knows or sees, the Mage is aware of as well.
+(10) Talking NPCs and merchants. The game will be focused on dungeon-crawling, but it
+must be possible to talk to and trade with some NPCs.
+(11) Turn-based or RTWP.
+It is strongly recommended to make the game Turn-Based.
+Implement at least standard and move actions; preferably full-round attacks as well, if
+your game supports classes or levels with more than one attack per round.
+If you are feeling adventurous, you can attempt to go with Real Time With Pause
+(RTWP), but it can get more messy.
+(12) Area of effect imprint.
+Some spells and abilities, such as Fireball, affect a wide area; the game should let you
+see the "imprint" of the spell before you cast it, so you can position it exactly.
+(13) Single player + AI.
+The game must support a single player mode, facing off against AI-controlled enemies.
+436
+Those enemies must be able to detect and engage the player party, making use of their
+basic attacks and abilities, even if they may lack good judgment in applying them, and
+display no sense of self-preservation.
+If one creature detects the player, it may be acceptable that all of them immediately
+shares that knowledge.
+(Sadly this describes the AI of most cRPGs. . . )
+(14) Advanced AI (Optional).
+It would be great if the AI could be more sophisticated.
+In that case, each monster should have its own knowledge of the party and other allied
+monsters, and be able to run away from the party to alert its friends – possibly bringing
+an army back on its heels! This necessitates modeling at least basic communication
+between enemies.
+It should use discernment in avoiding dangerous Areas of Effect, whether the party’s
+or his own.
+This intelligence can be conditional on the creature having a high enough INT stat;
+some creatures may be designated as leader of a group of its lesser kin or subordinates,
+and coordinate their actions so long as it as able to communicate with them, making it
+a priority target.
+Different creatures may have different level of aggressiveness and courage or morale,
+leading them to either fight to the death of flee as the slightest hint they are outmatched.
+This of course may be influenced by the presence of a designated leader or of powerful
+paragons of their race on the battlefield.
+(15) Classes.
+Of course the point is not to implement 50 classes or esoteric D&D mechanics.
+Just pick the main features of Fighter or Barbarian, Sorcerer or Wizard (henceforth
+called "Mage), and Rogue.
+You will implement all attributes (STR, DEX, CON, INT, WIS, CHA), and their basic
+effects on attack and damage rolls, armor class, etc. Use your common sense and do
+not try to implement every feature in the rule set. Start with those features which are
+most important for combat: Hit Points, armor, attack rolls, saves, etcetera.
+Each class should support a few levels with one or two feats, and two or three spells
+for the mage. Of course XP gain must be implemented. XP may be granted by killing
+monsters or by reaching deeper levels of the dungeon.
+Rogues should implement Sneak Attack.
+Mages should preferably be modelled after Sorcerer rather than Wizard due to simpler
+437
+casting mechanics and higher usefulness in dungeon-crawls. Their spell-casting
+progression can be copied from Wizard, on odd levels instead of even ones, so as to
+boost their usefulness at low level. (Spellcasters are weak at low levels and shine at
+higher levels; since this game will stay at low level, Mages need all the help they can
+get). Cantrips shall follow the pathfinder model and be at-will.
+If you introduce diseases, poisons, curses, or other mechanics, implementing Cleric as
+well is a must.
+Enemies may have custom classes, or they may simply use the same ones as player
+characters, just with different attributes and bonuses.
+(16) Multiclassing. (Optional)
+You may allow multiclassing; that it to say, to take levels in more than one class, for
+instance, the first level as Rogue, and the second as Fighter, the third as Rogue again,
+etc.
+Note that this may complicate the character sheet, so if you choose to implement this,
+plan ahead rather than trying to add the feature after the fact.
+(17) Races. (Very optional) You don’t need to implement multiple races. Humans will
+suffice. But of course you can provide other races if you want, and there is nothing
+more urgent to do.
+(18) Skills.
+Only a small subset of available skills need be implemented. Among them are Stealth,
+Disable Device, and Perception (as in Pathfinder), essential for the Rogue class.
+Everything else is very optional. If you implement poisons, you will need Heal as well.
+Use Magic Device is not necessary; assume the Mage and maybe the Rogue can use
+the wands they find.
+Of course, the full complexity of each implemented skill need not be present; the basics
+will suffice.
+Skill points per levels will need to be adjusted depending on how many skills you
+implement.
+(19) Resting mechanics.
+Of course, resting mechanics must allow characters to regain HP and spells. To simplify,
+have characters regain everything in a single rest.
+There must be a risk of being attacked during the rest if enemies are nearby. This can
+be handled as new enemies spawning out of nowhere or as enemies making their way
+from other parts of the level to attack you, the latter being more advanced.
+(20) Items.
+438
+There should be a few items available in the level or and/or from vendors: swords, and
+other weapons, armors, robes, wands, potions (in particular healing potions), rings,
+amulets, etc.
+Just one or two different items for each category will suffice.
+(21) Customisable hotbars and keyboard shortcuts
+The GUI must provide hotbars where each character may organise their abilities, spells,
+etc.
+The player must be able to customise the keyboard shortcuts used to access those
+abilities.
+(22) Combat logs.
+The game must provide extensive combat logs. For instance every attack must show
+what attack score was rolled against what AC, and it must be possible to find out
+where the attack and AC scores come from. That is to say, if I see my Fighter is rolling
+against an AC of 19, I must be able to find out how much of this AC comes from a
+Dexterity bonus, how much from an amulet, what kind of bonus it is each time, etc.
+This will be crucial to debugging the game and checking that abilities and items work
+as intended.
+(23) Detailed character sheet.
+Likewise, the player’s character sheets must detail the computations involved in the
+character’s AC, Attack bonus, saves etc.
+(24) Inventory management.
+The inventory management may be based solely on weight, or on weight and grid
+geometry, with larger objects occupying more slots (in the style of Diablo or Neverwinter
+Nights).
+(25) Multiplayer (Optional)
+If you are *really* in need of a challenge, you can implement a multiplayer mode so
+that your friends can connect to your game and take control of some characters in the
+party from their own machines.
+85
+For apprentices
+(1) There is much less time dedicated to that project: 5 weeks in total. (end: at the end of
+december).
+439
+(2) The level editor need not be fully functional. Do whatever you need so that you can
+use it to create a few levels, but it need not be usable by the end user.
+(3) The DnD aspect can be toned down considerable, or even done away with entirely, as
+you will not (edit a year later: I never finished that sentence and somehow nobody noticed)
+440
+Figure 7: NASA’s ST5 satellite antenna, designed via evolutionary algorithms to meet the stringent
+and very specific requirements of the mission. It is the first such object to have been sent to space
+(2006).
+441
+Part XIII
+Archived Project 2018–2019: Automata GUI
+86
+Vue d’ensemble
+Le but du projet est de réaliser une application – avec interface graphique – pour la
+construction de graphes orientés et de diagrammes sagittaux (co) d’automates d’états finis,
+avec des facilités automatiques et semi-automatiques pour produire des diagrammes naturels,
+plaisants, et lisibles, exportés au format LATEX/TikZ. Voyez les figures émaillant ce document
+pour quelques exemples. (cp)
+Cette application a pour vocation de venir en aide à la minorité peu considérée des professeurs
+de théorie des langages, qui ont très envie d’illustrer leurs diapositives et polycopiés avec
+de nombreux et beaux diagrammes, mais qui n’ont pas le luxe de passer à chaque fois une
+heure à se reconnecter avec leur artiste intérieur afin de d’imaginer comment l’automate
+devrait être disposé pour être “joli”, et encore une heure à se battre avec LATEX et TikZ pour
+coder une version approximative de cette vision.
+Ce document donne des pistes quant à ce qui est attendu, mais ne doit pas être abordé
+comme une spécification exhaustive. Posez des questions !
+Ceci est à réaliser en Python 3; le choix est ouvert pour la partie graphique, PyQt5 étant le
+choix par défaut (cq).
+Un prototype, réalisé dans le cadre du projet d’application en fin d’année par vos prédécesseurs,
+est mis à votre disposition pour démarrer — mais rien ne vous empêche de recommencer à
+zéro. C’est même fortement recommandé.
+87
+Qu’est-ce qu’un automate ?
+On abordera le module de théorie des langages en seconde période. Pendant la première
+moitié du projet, on verra donc les automates purement comme des diagrammes, et je ne
+(co)i.e. diagrammes avec des ronds et des flèches. Même racine latine, sagitta, “flêche”, que le signe Sagittaire...
+ici dans un contexte plus scientifique.
+(cp)Sources:
+mes
+polys,
+http://www.texample.net/tikz/examples/feature/
+automata-and-petri-nets/,
+https://www3.nd.edu/~kogge/courses/cse30151-sp18/Public/
+Assignments/tikz_tutorial.pdf,
+https://tex.stackexchange.com/questions/148158/
+make-a-tikz-automata-edge-pass-outside-the-automata,. . .
+(cq)cf. http://doc.qt.io/qt-5/examples-graphicsview.html pour de la documentation C++.
+C’est à
+adapter à la version Python, car PyQt5 est juste une bibliothèque de liens (bindings) vers Qt5.
+442
+donnerai (à l’oral) qu’une vague intuition de leur sémantique – ce qu’ils “veulent dire”.
+On aura malgré tout besoin de la définition formelle de la structure, afin d’avoir le vocabulaire
+nécessaire pour communiquer.
+Un automate fini non déterministe est un 5-uplet A = (Σ, Q, I, F, δ) où:
+⋄Q: ensemble fini d’états
+⋄Σ: alphabet fini
+⋄I ⊆Q: états initiaux
+⋄F ⊆Q: états terminaux
+⋄δ ⊆Q × (Σ ∪{ε}) × Q: relation de transition
+(p, a, q) ∈δ
+notation
+≡
+p
+a−→q
+δ(p, a) = {q | p
+a−→q}
+Voici un petit diagramme sagittal d’automate, illustrant les différentes conventions de
+représentation:
+1
+2
+3
+b
+ε
+a
+a, c
+a
+L’alphabet est l’ensemble des étiquettes de transition, i.e. les lettres lues par l’automate. Le
+symbole ε ne fait pas partie de Σ, il est utilisé pour une transition qui se déclenche sans rien
+lire. On a
+Σ = { a, b, c }
+Les états sont les ronds:
+Q = { 1, 2, 3 }
+Les états initiaux sont indiqués par une flèche entrante déconnectée:
+I = {1}
+Les états finaux sont indiqués par un double cercle ou par une flèche sortante déconnectée:
+F = { 1, 3 }
+Notons qu’il n’est pas du tout classique d’utiliser ces deux conventions dans le même
+automate; ou même dans le même document. L’automate ci-dessus commet donc une faute
+de goût.
+443
+Restent les transitions:
+δ = { (1, b, 2), (1, ε, 3), (2, a, 2), (2, a, 3), (2, c, 3) }
+Faites le même exercice avec les automates suivants:
+q0
+q1
+q2
+0
+1
+1
+0
+1
+q1
+q2
+q3
+0
+1
+1
+0
+0, 1
+a
+c
+b
+a
+88
+Partie graphique / manuelle
+Difficulté modérée; progression incrémentale; programmation objet; algorithmique simple; travail de
+documentation bibliothèques Python, LATEX, TikZ. Groupe de 3 recommandé.
+Réaliser un diagramme sagittal d’automate est largement une activité de dessin, régie en
+partie par des considérations purement esthétiques et en partie par des conventions et
+habitudes liées au domaine scientifique et favorisant la lisibilité des diagrammes.
+Le point de départ de l’application est donc in fine un logiciel de dessin vectoriel assez
+ordinaire, grandement simplifié par le faible nombre de figures de base dont on a besoin:
+flèches, droites ou incurvées, cercles simples et doubles, étiquettes en langage mathématique
+(entrée en LATEX), et c’est tout.
+444
+Le logiciel utilisera le vocabulaire “automates” et non le vocabulaire “dessin”, par exemple
+“état” et non “cercle”. Si un jour il nous vient l’envie d’avoir des états rectangulaires, cela
+doit être possible...
+Placer des états et définir des transitions doit être aussi simple et rapide que possible pour
+l’utilisateur .
+Notons que, bien que les noms des états soient arbitraires, on voudra parfois les nommer
+par des formules.
+Par exemple, l’automate suivant est obtenu via un algorithme de
+déterminisation, et il est essentiel de pouvoir faire apparaître les sous-ensembles dans les
+états afin d’illustrer la démarche:
+∅
+{1}
+{2}
+{1, 2}
+{3}
+{1, 3}
+{2, 3}
+{1, 2, 3}
+a, b
+a
+b
+a
+b
+a, b
+b
+a
+a
+b
+a
+b
+a
+b
+De même, dans l’automate suivant, ce sont les transitions qui portent des étiquettes un peu
+“compliquées”, et pas seulement une seule lettre — pour ceux que ça intéresse il s’agit ici en
+fait d’une machine de Turing:
+qa
+qb
+qd
+qc
+qe
+0,1,L
+1,1,R
+1,1,L
+0,1,L
+0,1,L
+1,0,R
+1,1,R
+0,1,R
+1,0,R
+Il n’est pas totalement nécessaire que les formules mathématiques soient rendues correctement
+dans l’interface graphique – le code LATEX peut être conservé tel-quel jusqu’à l’export vers
+445
+LATEX/TikZ. Ce serait toutefois appréciable si les formules pouvaient être rendues directement
+dans l’interface. Si c’est le cas, il faut toutefois que l’utilisateur puisse désactiver cette
+fonctionnalité, car le rendu dépend du contexte d’évaluation (LATEX est essentiellement un
+langage de programmation) et le code de l’utilisateur peut donc ne prendre sens qu’au sein
+de son document.
+Ceci peut poser certains problèmes au moment d’évaluer la taille des états, par exemple.
+A vous de proposer des solutions pour gérer ces cas de la manière la plus automatique et
+flexible possible.
+Ces briques de base, ronds et flèches, doivent pouvoir être manipulées à la fois finement et
+semi-automatiquement.
+Par “semi-automatiquement”, j’entends par exemple l’alignement sur une grille – ou
+plusieurs grilles – et la disposition de tout ou partie des états selon certains schémas; par
+exemple, voici un automate contenant plusieurs sous-figure régulières: deux en disposition
+linéaire, et deux en cercles (ou pentagones en l’occurrence).
+s
+2
+3
+4
+15
+16
+17
+18
+19
+t
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+L’interface doit permettre à l’utilisateur de réaliser semi-automatiquement ce type de figure.
+Spécifiquement l’utilisateur doit être capable de sélectionner des groupes de noeuds et de
+les arranger selon des figures géométriques régulières telles que des lignes, des cercles, et
+cetera.
+Les arrangements faisant partie d’une telle figure géométrique – que l’on appellera un groupe
+– doivent pouvoir être sélectionnés et déplacés collectivement. On doit aussi pouvoir régler
+les paramètres de chacun; par exemple le diamètre d’un groupe déjà défini doit pouvoir être
+modifié par la suite. De plus, plusieurs groupes doivent aisément pouvoir être uniformisés
+– par exemple, leur donner le même diamètre, placer leur centre de gravité à des endroits
+alignés horizontalement ou verticalement, etc.
+Les éléments doivent aussi pouvoir être manipulés finement; par exemple, on a finement
+déformé la transition de 3 à 10 pour éviter le premier pentagone; dans l’automate suivant,
+on doit pouvoir déformer la transition de q1/0 à q′
+3/1 de manière à éviter le croisement,
+446
+obtenant ainsi la nouvelle transition en rouge.
+q0/ϵ
+q′
+0/1
+q1/0
+q2/1
+q3/0
+q′
+3/1
+a
+b
+a
+b
+a
+b
+a
+b
+a
+b
+a
+b
+89
+Import et export
+L’application devra pouvoir sauvegarder et restaurer ses diagrammes dans un format au
+moins partiellement lisible par l’être humain et proche du formalisme A = (Σ, Q, I, F, δ) –
+avec bien sur quelques informations supplémentaire d’ordre cosmétique, telles que couleurs,
+courbure, localisation (x, y), etc.
+Au delà de cela, il est absolument essentiel qu’elle soit capable d’exporter au format TikZ. La
+qualité de l’export TikZ est un facteur important, car l’utilisateur aura peut-être envie de
+retoucher le code généré.
+Comme exemple de code TikZ, l’automate
+1
+2
+3
+b
+ε
+a
+a, c
+a
+est codé par
+\begin{tikzpicture}[fst]
+\node[state, initial above, accepting] (1) {$1$};
+\node[state, below left of=1] (2) {$2$};
+\node[state, below right of=1, accepting right] (3) {$3$};
+\draw
+447
+(1) edge[above] node{$b$} (2)
+(1) edge[below, bend right, left=0.3] node{$\eps$} (3)
+(2) edge[loop left] node{$a$} (2)
+(2) edge[below] node{$a, c$} (3)
+(3) edge[above, bend right, right=0.3] node{$a$} (1);
+\end{tikzpicture}
+qui est assez lisible et descriptif. Le paramêtre fst (pour Finite-State Transducer) est un
+style personnalisé défini dans ce document.
+Il y a bien d’autres façons de coder cette figure, telle qu’un matrice, ou des positions (x, y)
+dans le plan explicites. Une grande flexibilité au niveau de la génération du code final est
+attendue.
+À vous de vous documenter sur LATEX et TikZ pour voir les différentes possibilités offertes par
+ces langages. L’application doit en tirer parti autant que faire se peut, afin que le diagramme
+final puisse être ajusté le plus finement possible avant l’export, et minimiser les besoins en
+retouches au niveau du code généré.
+Au delà de la figure, on doit aussi pouvoir exporter du code LATEX pour la définition formelle
+de l’automate sous forme A = (Σ, Q, I, F, δ). Les transitions doivent pouvoir être générées
+sous forme d’ensemble, comme plus haut, ou sous forme de tableau de transition.
+90
+Partie automatique
+Difficulté élevée (pour obtenir de bons résultats); algorithmique poussée; recherche documentaire;
+réflexion poussée. Groupe de 3 recommandé.
+Même avec une bonne interface graphique, tous ces choix et ajustements esthétiques prennent
+énormément de temps. Du point de vue de l’utilisateur final, la partie “dessin manuel” de
+l’application est donc à réserver pour les figures importantes, qui doivent être réalisées avec
+une qualité parfaite.
+Dans la plupart des cas, l’utilisateur veut juste définir son automate “en vrac” et en quelques
+clics, appuyer sur un bouton et obtenir instantanément une (ou plusieurs) proposition
+de diagramme, calculées programmatiquement, qui soient d’une qualité passable. Ceci
+implique de minimiser les croisements (pas toujours possible à éviter entièrement – on verra
+au second semestre la notion de graphe planaire, et le fait que tous les graphes ne sont pas
+planaires), de disposer les états à intervales réguliers de façon à assurer un “niveau de gris”
+homogène dans la figure, etc.
+Il existe de nombreuses techniques spécifiques au dessin automatique de graphes, ainsi
+que des métaheuristiques générales potentiellement applicables, telles que les algorithmes
+révolutionnaires / génétiques, le recuit simulé, et les colonies de fourmis, pour n’en citer que
+448
+quelques-unes.
+Mettre en oeuvre ces méthodes nécessitera un gros travail de recherche documentaire et de
+réflexion poussée pour comprendre des concepts difficiles au niveau 3A.
+À ceci s’ajoute une difficulté supplémentaire: il ne s’agit pas de n’importe-quels graphes,
+mais d’automates; les conventions de dessin ne sont pas les mêmes; utiliser un algorithme
+de dessin arborescent ou fractal donnerait généralement des résultats peu appropriés, même
+s’ils peuvent être “jolis”. On voudra généralement partir de l’état initial, aller plutôt de
+gauche à droite et de haut en bas, disposer les états sur une grille, sauf certains cycles et
+autres motifs à détecter et à mettre en exergue, et ainsi de suite.
+Il n’y a pas (ou peu) de littérature disponible sur le sujet spécifique “comment dessiner des
+automates”. Les dessins sont faits par les scientifiques “au feeling”, influencés par l’habitude
+et le mimétisme sans que les conventions soient verbalisées.
+Dans cette partie du projet, il vous appartiendra d’inférer une partie de ces conventions à
+partir d’exemples, de les verbaliser, et de les programmer.
+Un mode interactif, permettant à l’utilisateur de fournir certaines informations sémantiques
+à l’application pour guider ses choix (par exemple, ce groupe d’états va ensemble, cet état
+est important, etc), ou bien de choisir entre plusieurs alternatives (algorithme évolutionnaire
+avec sélection (semi-)manuelle, est à considérer.
+De plus, ces outils doivent pouvoir être appliqués semi-automatiquement au cours de
+l’utilisation de l’interface pour faciliter la vie de l’utilisateur – par exemple, en détectant
+automatiquement quand une nouvelle transition est créée si elle croise quelque-chose, auquel
+cas elle sera créée courbe et non droite, ou bien en offrant des suggestions d’agencements
+dans la marge, applicables en un clic, etc.
+La partie du rapport consacrée à ces réflexions doit être assez détaillée.
+91
+Répartition des tâches
+Il est conseillé de procéder par groupes de 6, par exemple en deux trinômes, un pour la partie
+manuelle et l’import / export, et l’autre pour la partie automatique.
+Dans ce cas, les trinômes doivent évidemment communiquer et intégrer leur code au projet
+commun de façon très régulière – les tâches ne sont pas indépendantes et la répartition
+ci-dessus n’est qu’une suggestion.
+Il a été noté que l es deux partie sont de difficultés et de natures différentes, la partie manuelle
+étant colorée “développeur” et l’autre “recherche”.
+Choisissez bien la partie sur laquelle vous travaillerez en fonction de vos goûts et de vos
+capacités.
+449
+La partie automatique peut potentiellement déboucher sur une très bonne solution (et donc
+une note stratosphérique) en deux semaines de réflexion et 200 lignes de code,. . . mais vous
+pouvez tout aussi bien passer un semestre à pondre 10 000 lignes de code produisant une
+bouillie infâme et inexploitable, de valeur 0.
+En revanche, la partie manuelle est difficile à rater si on travaille régulièrement, (mais il
+faudra pondre beaucoup de lignes que l’on ait les bonnes idées ou pas).
+Pour minimiser le risque d’avoir une mauvaise note individuelle sur la partie automatique
+en cas d’échec, il serait une bonne idée de contribuer un peu à l’interface graphique. Les cas
+simples comme la détection de croisement sont idéaux pour cela.
+Il est bon également que tout membre du groupe ait une vue d’ensemble de l’application,
+même des parties écrites par les autres.
+450
+Figure 8: De droite à gauche: remontoir, roue de couronne, rochet et son cliquet, barillet,
+diverses roues, certaines portant des aiguilles, roue d’échappement, ancre de balancier, bal-
+ancier et son ressort. Voir l’animation sur https://scratch.mit.edu/projects/26004123/
+#fullscreen, et la vidéo https://www.wimp.com/1949-how-a-watch-works/.
+Part XIV
+Archived Project 2017–2018: Mon(s)tres
+92
+Vue d’ensemble
+Le but de ce projet, à réaliser en Python 3 par groupes de 4 à 6, est de réaliser un générateur
+automatique de mécanismes horlogers pour montres mécaniques doté, de plus, d’une
+b
+b
+a
+c
+Figure 9: Une alternative au balancier: l’échappement à ancre, utilisant un pendule.
+451
+fonction de visualisation.
+La génération se fera au moyen d’algorithmes évolutionnaires, une classe de métaheuristiques
+qui imite l’évolution biologique pour résoudre des problèmes complexes pour lesquels une
+approche directe (résolution d’équations) n’est pas faisable, et où l’espace de recherche
+est trop grand pour une approche par force brute. Plus spécifiquement, on utilisera des
+algorithmes génétiques.
+Le principe est le suivant: nous générons aléatoirement une population de montres... ou
+plutôt de monstres, car un mécanisme généré aléatoirement a peu de chances d’être utile
+pour savoir l’heure... Cette population est ensuite soumise à des conditions de sélection,
+telles que les monstres qui sont de meilleures montres – i.e. qui sont plus utiles pour mesurer
+le passage du temps, ou plus efficaces – ont de meilleures chances de se reproduire, et moins
+de périr. Quelques mutations peuvent aussi avoir lieu. Après de nombreuses générations,
+on doit obtenir d’excellentes montres.
+93
+Les sous-problèmes
+93.1
+La modélisation des monstres
+On impose une abstraction au niveau des pièces d’horlogerie: nos monstres évoluent dans
+une soupe primordiale de remontoirs, roues dentées (faisant office de rochet, couronnes,
+etc. On considère que toutes les roues ont entre 3 et 1000 dents, identiques pour toutes les
+roues sauf l’échappement (cr)), roues d’échappement (si l’on veut la considérer séparément,
+ce qui est conseillé), ancres, balanciers, ressorts (on pourra considérer un ressort comme
+un ressort moteur ou un ressort de balancier), tiges (pouvant faire office d’aiguilles ou de
+tiges de pendule). Le boîtier est considéré comme une pièce toujours présente. On ignorera
+totalement les frottements.
+Selon les ambitions de votre groupe, vous pourrez choisir d’ignorer totalement les consid-
+érations d’espace:
+93.1.1
+Mode connexion libre
+Chaque pièce peut se connecter à n’importe-quelle autre pièce à certains points de connexion:
+par exemple, une roue dentée peut se connecter sur son axe, et sur ses dents. Si une roue
+dentée se connecte à une autre sur leurs dents, on s’attend à ce que l’une entraîne l’autre; si
+elles se connectent sur leurs axes, on obtient un pignon. Rien n’empêche une troisième roue
+de se connecter sur le même axe.
+(cr)On pourra tout de même aussi considérer la roue d’échappement comme une roue dentée ordinaire dans
+un premier temps, pour simplifier.
+452
+Une tige peut se connecter aux deux bouts; par exemple, une tige connectée au boîtier à un
+bout et à n’importe-quel autre objet, par exemple une roue, à l’autre bout, forme un pendule.
+Une tige connectée à un axe de roue dentée d’un côté, et libre de l’autre, fait office d’aiguille.
+En revanche, connecter une tige aux dents d’une roue stoppe le mécanisme.
+Une ancre peut se connecter aux dents (à une roue d’échappement), et sur son axe, par
+exemple à un balancier ou à une tige.
+Un ressort spirale peut se connecter en son centre et à son extrémité; par exemple, un ressort
+connecté à deux roues dentées coaxiales, l’une par le centre, l’autre par les dents (on imagine
+que le ressort se connecte sous les dents), forme un début de moteur.
+Un remontoir peut se connecter sur l’axe ou sur les dents d’une roue, avec les mêmes effets.
+A vous de définir le reste des règles de connexion entre les pièces, et de prévoir leurs effets.
+93.1.2
+Mode 2D 1
+2:
+Le mode précédent ignore un certain nombre de problèmes. Il n’est en réalité pas immédiat
+de connecter n’importe quelle pièce à n’importe quelle autre. Par exemple, les roues dentées
+ne sont pas de taille arbitraire: comme les dents doivent être compatibles pour les roues
+connectées entre elles, le nombre de dents est proportionnel à la circonférence, et il n’est
+donc pas possible d’en varier la taille arbitrairement. Pour connecter deux roues distantes
+entre elles, on doit souvent avoir recours à des pignons fous. Le mode précédent, ignorant
+de tous ces aspects, va donc résulter en des constructions dignes d’Escher, impossibles à
+mettre en oeuvre sans rajouter des composants pour assurer les liaisons.
+En mode 2D1
+2, les pièces posséderont des dimensions largeur/hauteur, et on les placera sur
+un plan; on aura également besoin d’une dimension de profondeur, discrète. Par exemple,
+une roue avec pignon occupe deux plans superposés: un pour la roue, et un pour le pignon.
+Un moteur occupe au moins trois étages, un pour chaque roue et un pour le ressort. Les
+connexions se feront lorsque les pièce sont situées approximativement au bon endroit pour
+se toucher.
+93.1.3
+Que choisir ?
+Le premier mode sera a priori plus aisé à mettre en œuvre du point de vue des algorithmes
+évolutionnaires – il y moins de possibilités – mais obtenir des visualisations intéressantes
+sera nettement plus difficile.
+93.2
+Mutation, sélection, reproduction
+Pour utiliser des algorithmes génétiques, il ne suffit pas de savoir comment représenter
+les monstres eux-mêmes (le phénotype), mais il faut aussi décider d’un codage génétique
+de cette représentation: le génotype d’un monstre. C’est ce génotype qui est l’objet des
+croisements et mutations qui donnent son pouvoir à la méthode.
+453
+La choix du génotype vous est laissé. Pour des connections libres, une simple matrice
+d’adjacence peut faire l’affaire. Dans tous les cas, on peut aussi avoir une représentation en
+chaîne binaire, éventuellement découpée en chromosomes – c’est la méthode classique.
+Il faudra ensuite définir comment fonctionnent les accouplements (enjambements en un
+point, en deux, uniformes, semi-uniformes ?), les mutations, et la sélection (par rang,
+proportionnelle,... taille de la population, etc).
+Il est très fortement conseillé d’implémenter vos propre algorithmes plutôt que d’utiliser
+une bibliothèque toute faite. Tous ces choix de modélisation devront être faits quoi qu’il
+arrive, et vous devrez savoir les argumenter dans tous les cas.
+Il est essentiel que le phénotype puisse être calculé assez rapidement à partir du génotype, car
+il faut bien l’évaluer (section suivante), et ce de très nombreuses fois. Il s’agit là d’une étape
+de calcul qui peut gagner énormément à être parallélisée (sur machine multi-processeur;
+faire ça sur de multiples machines est hors cadre ce semestre).
+93.3
+La mesure d’un monstre
+La survie d’un monstre dépend de son utilité en tant qu’instrument de mesure du temps. Il
+s’agit de simuler un environnement hostile aux monstres qui ne sont pas ponctuels; c’est ici
+que nous allons injecter quelques connaissances d’horlogerie et nos conceptions subjectives
+de ce qui fait une bonne montre. On doit écrire une fonction – utilité, ou fitness – attribuant
+un score à chaque monstre, qu’on cherche à maximiser.
+Il est important que ce score soit assez fin pour détecter de petites améliorations.
+On supposera toujours la présence d’un boîtier, mais un boîtier seul ne sert strictement à
+rien.
+Une roue dentée, connectée au boîtier sur son axe, est un peu meilleure. On peut lui donner
+une impulsion et attendre qu’elle s’arrête pour mesurer un intervalle de temps. C’est pénible
+mais très légèrement mieux que rien.
+Un ressort tout seul peut jouer un rôle similaire; on attend qu’il finisse de vibrer.
+Un pendule est nettement mieux: on peut compter les secondes tranquillement, pendant un
+temps raisonnable.
+Un moteur avec un système d’échappement est nettement mieux qu’un pendule, car il va
+durer beaucoup plus longtemps (durée à calculer). Il est aussi moins encombrant, et peut se
+déplacer.
+Mais tout ça est limité, car il faut garder l’œil sur le dispositif, seconde après seconde, et
+c’est peu lisible. Si une aiguille tourne avec, c’est mieux. Si plusieurs aiguilles tournent
+à des rythmes différents, c’est mieux. Si leurs rythmes se rapprochent d’une rotation par
+minute, heure, et jour, c’est encore mieux. Si en plus on a aussi semaine / mois, etc, c’est
+encore mieux.
+454
+Figure 10: Antenne ST5 de la NASA, obtenue via algorithmes évolutionnaires; premier objet
+créé de cette manière à aller dans l’espace (2006).
+Si on a moins de pièce, ceteris paribus c’est mieux. En particulier, on ne veut pas 50 moteurs
+à remonter. Mais attention, ceci doit rester un critère secondaire, sinon aucun mécanisme
+complexe n’aura le temps d’évoluer.
+De même, si le mécanisme est plus compact, ceteris paribus c’est aussi mieux (en particulier
+pour la représentation 2,5D) – une roue à 1000 dents n’est pas indiquée pour une montre-
+bracelet.
+Et ainsi de suite.
+En revanche, on ne trichera pas en récompensant des étapes intermédiaires pour des
+engrenages complexes qu’on a déjà en tête. La NASA n’aurait pas obtenu l’antenne ST5
+(cf. figure) s’ils avaient dressé leurs algos à imiter leurs ingénieurs.
+L’exercice consiste donc principalement d’une part à simuler le comportement d’un mé-
+canisme donné (calculer la vitesse de rotation des pièces), et d’autre part à détecter les
+configurations qui nous plaisent et déplaisent, en choisissant judicieusement les poids pour
+chaque critère.
+Ce calcul va être réalisé de très nombreuses fois; il est donc impératif qu’il soit très efficace.
+Encore une fois, on va négliger les frottements et l’usure.
+93.4
+Stockage des populations
+Les calculs étant longs, il est nécessaire de pouvoir les interrompre et les reprendre sans
+crainte. Il faudra donc pouvoir sauvegarder (et charger) la population en cours et quelques
+statistiques pertinentes des générations précédentes. Par exemple, les stats de fitness au
+cours du temps, et les meilleurs individus de chaque génération.
+Il serait aussi bon de pouvoir fusionner des populations enregistrées pour former une
+nouvelle population initiale.
+455
+93.5
+Visualisation graphique des monstres
+Il va bien falloir jeter un œil aux monstres pour évaluer et exploiter les résultats produits, car
+personne ne va s’amuser à lire une matrice d’adjacence ou un code binaire. Ce n’est donc
+pas du tout optionnel.
+Un graphe indiquant la connexion entre les pièces est un strict minimum, mais l’on attend
+plutôt un schéma ou un dessin décrivant le mécanisme de façon aussi claire et proche de la
+réalité que possible; cf. les deux premières figures. Ceci est bien plus aisé dans le mode 2.5D;
+on peut imaginer un découpage niveau par niveau. Si on peut faire ça en vraie 3D, encore
+mieux. (cs) C’est interactif ? Mieux. Animé ? Encore mieux.
+La visualisation doit absolument être capable d’indiquer la vitesse de rotation de chaque
+composant, et ce de manière claire et lisible; cette fonction doit pouvoir être activée et
+désactivée.
+93.6
+Interfaces graphique et ligne-de-commande
+Il faut absolument avoir une interface ligne de commande claire, robuste et bien documentée
+permettant de lancer, sauvegarder, et charger des évolutions, ainsi de de visualiser les
+meilleurs individus d’une population (en ouvrant une fenêtre graphique et/ou en générant
+un fichier graphique).
+Il est aussi bon que le programme ait une GUI (ct) permettant de visualiser en temps réel
+l’évolution de la population et ses meilleurs individus, et si possible d’ajuster les poids de
+certains critères en temps réel, tels que l’importance de la compacité du mécanisme.
+94
+Répartition des tâches
+Il est conseillé de procéder par groupes de 6, par exemple en trois binômes focalisés sur les
+trois parties principales:
+⋄Algos génétiques (choix de génôme, mutation, crossover, parallélisation des calculs
+(multi-processeurs)...),
+⋄Évaluation des monstres (horlogerie / simulation, fonction de fitness)
+⋄Interface graphique, interactivité, et visualisation.
+D’autres tâches annexes sont à répartir entre les membres: e.g. stockage et gestion des
+populations, ligne de commande. . .
+(cs)Uniquement si on n’a rien d’autre à faire. VPython est une bonne bibliothèque, mais n’est pas compatible
+avec les dernières versions de Python3. On ne s’engagera dans la 3D que si on a déjà une bonne visualisation
+par ailleurs, ou alors si on a déjà beaucoup d’expérience de la 3D en Python.
+(ct)PyQt, PyGTK, TkInter,. . . au choix
+456
+Les binômes doivent communiquer et intégrer leur code au projet commun de façon très
+régulière – les tâches ne sont pas indépendantes et la répartition ci-dessus n’est qu’une
+suggestion. Le choix de modélisation des monstres doit être fait au plus tôt, et concerne tout
+le monde.
+457
