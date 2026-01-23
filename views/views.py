@@ -1,59 +1,65 @@
 import pygame
 import webbrowser
 import os
-import pickle  # Module pour sauvegarder/charger les objets Python
+import pickle
 
-# --- CONSTANTES ---
+# --- CONSTANTES DE BASE ---
 TILE_WIDTH = 64
 TILE_HEIGHT = 32
-SCREEN_W = 1024
-SCREEN_H = 768
+DEFAULT_SCREEN_W = 1024
+DEFAULT_SCREEN_H = 768
 
 # Configuration Minimap
-MINIMAP_WIDTH = 300     # On fixe la largeur, la hauteur sera calculée automatiquement
-MINIMAP_MARGIN = 20     # Marge depuis le bord de l'écran
-MINIMAP_BORDER = 2      # Épaisseur bordure blanche
+MINIMAP_WIDTH = 300
+MINIMAP_MARGIN = 20
+MINIMAP_BORDER = 2
 
 # Couleurs
-COLOR_TEAM_A = (0, 80, 255)   # Bleu
-COLOR_TEAM_B = (220, 20, 60)  # Rouge
-COLOR_MINIMAP_BG = (30, 30, 30) # Gris Foncé
-COLOR_VIEWPORT = (255, 255, 255) # Cadre blanc caméra
-
-# Nouvelles couleurs pour l'UI
-COLOR_PANEL_BG = (0, 0, 0, 180) # Noir semi-transparent
-COLOR_TEXT = (255, 255, 255) # Blanc
+COLOR_TEAM_A = (0, 80, 255)
+COLOR_TEAM_B = (220, 20, 60)
+COLOR_MINIMAP_BG = (30, 30, 30)
+COLOR_VIEWPORT = (255, 255, 255)
+COLOR_PANEL_BG = (0, 0, 0, 180)
+COLOR_TEXT = (255, 255, 255)
 
 class GUI:
-    def __init__(self, game_instance):
+    def __init__(self, game_instance, screen_width=DEFAULT_SCREEN_W, screen_height=DEFAULT_SCREEN_H):
         self.game = game_instance
         self.map = getattr(game_instance, 'map', None)
         
-        self.camera_x = SCREEN_W // 2
-        self.camera_y = 50
+        self.screen_w = screen_width
+        self.screen_h = screen_height
         
-        # État de la minimap
+        self.camera_x = 0
+        self.camera_y = 0
+        self.zoom = 1.0
+        self.min_zoom = 0.5
+        self.max_zoom = 2.0
+        
+        self.center_camera_on(10, 10)
+        
+        # --- SOLUTION DRAG & DROP ---
+        self.is_dragging = False  # L'interrupteur magique
+        
+        # UI States
         self.show_minimap = True
-        
-        # --- NOUVEAU : États des panneaux de stats ---
-        self.show_panel_a = True   # F1
-        self.show_panel_b = True   # F2
-        self.show_details = True   # F3
-        self.show_ui_master = True # F4
-        
-        # Timer pour éviter le "rebond" des touches (clignotement)
+        self.show_panel_a = True
+        self.show_panel_b = True
+        self.show_details = True
+        self.show_ui_master = True
         self.last_toggle_time = 0
         
         self.assets = {}
         self._load_assets()
 
-        # Polices d'écriture pour l'UI
         pygame.font.init()
         self.font_ui = pygame.font.SysFont("Arial", 14)
         self.font_title = pygame.font.SysFont("Arial", 16, bold=True)
+        
+        # Purge du mouvement initial
+        pygame.mouse.get_rel()
 
     def _load_assets(self):
-        # 1. SOL
         try:
             img = pygame.image.load("assets/grass.png").convert()
             img.set_colorkey(img.get_at((0,0)))
@@ -62,17 +68,13 @@ class GUI:
             s = pygame.Surface((TILE_WIDTH, TILE_HEIGHT)); s.fill((34, 139, 34))
             self.assets['grass'] = s
 
-        # 2. KNIGHT
         try:
             img_k = pygame.image.load("assets/knight.png").convert_alpha()
-            coin = img_k.get_at((0,0))
-            if coin.a == 255: img_k.set_colorkey(coin)
             self.assets['knight'] = pygame.transform.scale(img_k, (50, 50))
         except:
             s = pygame.Surface((30, 30), pygame.SRCALPHA); pygame.draw.circle(s, (200, 0, 0), (15, 15), 15)
             self.assets['knight'] = s
 
-        # 3. AUTRES
         for name in ["pikeman", "crossbowman"]:
             try:
                 img = pygame.image.load(f"assets/{name}.png").convert_alpha()
@@ -81,307 +83,239 @@ class GUI:
                 s = pygame.Surface((30, 30), pygame.SRCALPHA); pygame.draw.circle(s, (100, 100, 100), (15, 15), 12)
                 self.assets[name] = s
 
+    def get_scaled_tile_size(self):
+        return TILE_WIDTH * self.zoom, TILE_HEIGHT * self.zoom
+
     def cart_to_iso(self, row, col):
-        """ Conversion Grille -> Pixels Isométriques """
-        iso_x = (col - row) * (TILE_WIDTH // 2)
-        iso_y = (row + col) * (TILE_HEIGHT // 2)
+        w, h = self.get_scaled_tile_size()
+        iso_x = (col - row) * (w / 2)
+        iso_y = (row + col) * (h / 2)
         return iso_x, iso_y
 
     def iso_to_grid(self, x, y):
-        """ Conversion inverse : Pixels Iso -> Grille """
-        half_w = TILE_WIDTH / 2
-        half_h = TILE_HEIGHT / 2
-        col = (y / half_h + x / half_w) / 2
-        row = (y / half_h - x / half_w) / 2
-        return row, col
+        w, h = self.get_scaled_tile_size()
+        adj_x = x - self.camera_x
+        adj_y = y - self.camera_y
+        half_w = w / 2
+        half_h = h / 2
+        col = (adj_y / half_h + adj_x / half_w) / 2
+        row = (adj_y / half_h - adj_x / half_w) / 2
+        return int(row), int(col)
 
     def center_camera_on(self, row, col):
-        """ Téléporte la caméra pour centrer la case (row, col) """
         target_x, target_y = self.cart_to_iso(row, col)
-        self.camera_x = (SCREEN_W // 2) - target_x
-        self.camera_y = (SCREEN_H // 2) - target_y
+        self.camera_x = (self.screen_w // 2) - target_x
+        self.camera_y = (self.screen_h // 2) - target_y
 
+    # --- 1. GESTION DES CLICS (EVENTS) ---
+    def handle_events(self, event):
+        """ Gère les actions 'one-shot' : Clic, Relâchement, Zoom, Resize """
+        
+        # Redimensionnement
+        if event.type == pygame.VIDEORESIZE:
+            self.screen_w, self.screen_h = event.w, event.h
+
+        # Zoom (Molette Scroll)
+        elif event.type == pygame.MOUSEWHEEL:
+            if event.y > 0:
+                self.zoom = min(self.max_zoom, self.zoom + 0.1)
+            elif event.y < 0:
+                self.zoom = max(self.min_zoom, self.zoom - 0.1)
+
+        # DÉBUT DU CLIC (Appui)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # 3 = Clic Droit, 2 = Clic Molette (Bouton du milieu)
+            if event.button == 3 or event.button == 2:
+                self.is_dragging = True
+                pygame.mouse.get_rel() # Important : On remet le compteur de mouvement à zéro ici !
+
+        # FIN DU CLIC (Relâchement)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 3 or event.button == 2:
+                self.is_dragging = False
+
+    # --- 2. GESTION CONTINUE (BOUCLE) ---
     def handle_input(self):
-        """ Gère toutes les entrées (Clavier et Souris) """
+        """ Gère le mouvement continu tant que le bouton est actif """
         keys = pygame.key.get_pressed()
         
-        # 1. Caméra Clavier (Maintenu)
-        s = 20
+        # Clavier
+        s = 20 / self.zoom 
         if keys[pygame.K_LEFT]: self.camera_x += s
         if keys[pygame.K_RIGHT]: self.camera_x -= s
         if keys[pygame.K_UP]: self.camera_y += s
         if keys[pygame.K_DOWN]: self.camera_y -= s
 
-        # 2. Touches "Toggle" (Appui unique)
-        # On utilise un délai (cooldown) de 200ms pour éviter le clignotement rapide
+        # Souris (Si l'interrupteur est ON)
+        if self.is_dragging:
+            dx, dy = pygame.mouse.get_rel()
+            self.camera_x += dx
+            self.camera_y += dy
+        else:
+            # On vide le buffer de mouvement même si on ne bouge pas la caméra
+            # pour éviter un saut au prochain clic
+            pygame.mouse.get_rel()
+
+        # Raccourcis UI
         current_time = pygame.time.get_ticks()
         if current_time - self.last_toggle_time > 200:
-            
-            # F1 - F4 : Gestion UI
-            if keys[pygame.K_F1]:
-                self.show_panel_a = not self.show_panel_a
-                self.last_toggle_time = current_time
-            if keys[pygame.K_F2]:
-                self.show_panel_b = not self.show_panel_b
-                self.last_toggle_time = current_time
-            if keys[pygame.K_F3]:
-                self.show_details = not self.show_details
-                self.last_toggle_time = current_time
-            if keys[pygame.K_F4]:
-                self.show_ui_master = not self.show_ui_master
-                self.last_toggle_time = current_time
-            
-            # M : Minimap
-            if keys[pygame.K_m]:
-                self.show_minimap = not self.show_minimap
-                self.last_toggle_time = current_time
+            if keys[pygame.K_F1]: self.show_panel_a = not self.show_panel_a; self.last_toggle_time = current_time
+            if keys[pygame.K_F2]: self.show_panel_b = not self.show_panel_b; self.last_toggle_time = current_time
+            if keys[pygame.K_F3]: self.show_details = not self.show_details; self.last_toggle_time = current_time
+            if keys[pygame.K_F4]: self.show_ui_master = not self.show_ui_master; self.last_toggle_time = current_time
+            if keys[pygame.K_m]: self.show_minimap = not self.show_minimap; self.last_toggle_time = current_time
+            if keys[pygame.K_F11]: self._quick_save(); self.last_toggle_time = current_time
+            if keys[pygame.K_F12]: self._quick_load(); self.last_toggle_time = current_time
 
-            # --- SAUVEGARDE ET CHARGEMENT (F11 / F12) ---
-            
-            # F11 : Sauvegarde Rapide (Quick Save)
-            if keys[pygame.K_F11]:
-                try:
-                    # On sauvegarde l'objet 'game' complet dans un fichier
-                    with open("quicksave.pkl", "wb") as f:
-                        pickle.dump(self.game, f)
-                    print("💾 Partie sauvegardée dans 'quicksave.pkl'")
-                    # Petit hack visuel : on utilise le titre pour confirmer
-                    pygame.display.set_caption("Age of Python - PARTIE SAUVEGARDÉE !")
-                except Exception as e:
-                    print(f"❌ Erreur sauvegarde : {e}")
-                self.last_toggle_time = current_time
+        # Minimap (Clic Gauche standard)
+        if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and not self.is_dragging:
+            self._handle_minimap_click()
 
-            # F12 : Chargement Rapide (Quick Load)
-            if keys[pygame.K_F12]:
-                if os.path.exists("quicksave.pkl"):
-                    try:
-                        with open("quicksave.pkl", "rb") as f:
-                            loaded_game = pickle.load(f)
-                        
-                        # ASTUCE : On met à jour l'objet game existant avec les données chargées
-                        # Cela permet de ne pas briser la référence dans la boucle principale
-                        self.game.__dict__.update(loaded_game.__dict__)
-                        
-                        # On met à jour la référence de la map dans la GUI
-                        self.map = self.game.map
-                        
-                        print("📂 Partie chargée avec succès !")
-                        pygame.display.set_caption("Age of Python - PARTIE CHARGÉE !")
-                    except Exception as e:
-                        print(f"❌ Erreur chargement : {e}")
-                else:
-                    print("⚠️ Aucune sauvegarde trouvée.")
-                self.last_toggle_time = current_time
+    # ... (Le reste des méthodes est identique et n'a pas besoin de changer) ...
+    def _quick_save(self):
+        try:
+            with open("quicksave.pkl", "wb") as f: pickle.dump(self.game, f)
+            print("💾 Sauvegardé"); pygame.display.set_caption("Age of Python - SAUVEGARDÉ")
+        except Exception as e: print(f"Erreur Save: {e}")
 
+    def _quick_load(self):
+        if os.path.exists("quicksave.pkl"):
+            try:
+                with open("quicksave.pkl", "rb") as f:
+                    loaded = pickle.load(f)
+                    self.game.__dict__.update(loaded.__dict__)
+                    self.map = self.game.map
+                print("📂 Chargé")
+            except Exception as e: print(f"Erreur Load: {e}")
 
-        # --- GESTION SOURIS MINIMAP ---
-        if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and self.map:
-            mx, my = pygame.mouse.get_pos()
-            
-            # Récupération dimensions
-            max_rows = getattr(self.map, 'rows', 120)
-            max_cols = getattr(self.map, 'cols', 120)
-            
-            # --- CALCUL TAILLE SUR MESURE ---
-            iso_width = (max_cols + max_rows) * TILE_WIDTH / 2
-            iso_height = (max_cols + max_rows) * TILE_HEIGHT / 2
-            
-            # Facteur d'échelle basé sur la largeur fixe
-            scale = MINIMAP_WIDTH / iso_width
-            
-            # Hauteur ajustée (Plus de carré forcé !)
-            mini_height = iso_height * scale
-            
-            # Coordonnées écran
-            mini_x = SCREEN_W - MINIMAP_WIDTH - MINIMAP_MARGIN
-            mini_y = SCREEN_H - mini_height - MINIMAP_MARGIN
+    def _handle_minimap_click(self):
+        if not self.map: return
+        mx, my = pygame.mouse.get_pos()
+        max_rows = getattr(self.map, 'rows', 120); max_cols = getattr(self.map, 'cols', 120)
+        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2; base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
+        scale = MINIMAP_WIDTH / base_iso_w; mini_height = base_iso_h * scale
+        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN; rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
+        
+        if rect_x <= mx <= rect_x + MINIMAP_WIDTH and rect_y <= my <= rect_y + mini_height:
+            rel_x = mx - rect_x; rel_y = my - rect_y
             offset_x_world = max_rows * TILE_WIDTH / 2
-            
-            # Si on clique DANS la zone ajustée
-            if mini_x <= mx <= mini_x + MINIMAP_WIDTH and mini_y <= my <= mini_y + mini_height:
-                
-                # Position relative dans le rectangle
-                rel_x = mx - mini_x
-                rel_y = my - mini_y
-                
-                # Conversion Minimap -> World Iso
-                # mx = (wx + offset) * scale  => wx = (mx/scale) - offset
-                world_click_x = (rel_x / scale) - offset_x_world
-                world_click_y = rel_y / scale
-                
-                # On centre la caméra
-                self.camera_x = (SCREEN_W // 2) - world_click_x
-                self.camera_y = (SCREEN_H // 2) - world_click_y
+            world_x = (rel_x / scale) - offset_x_world; world_y = rel_y / scale
+            self.camera_x = (self.screen_w // 2) - world_x; self.camera_y = (self.screen_h // 2) - world_y
 
     def draw_minimap(self, screen):
-        """ Dessine la minimap rectangulaire en bas à droite """
-        if not self.show_minimap or not self.map or not self.show_ui_master:
-            return
+        if not self.show_minimap or not self.map or not self.show_ui_master: return
 
+        # 1. Calculs de base
         max_rows = getattr(self.map, 'rows', 120)
         max_cols = getattr(self.map, 'cols', 120)
-
-        # --- CALCULS DE PROJECTION ---
-        iso_width = (max_cols + max_rows) * TILE_WIDTH / 2
-        iso_height = (max_cols + max_rows) * TILE_HEIGHT / 2
-        scale = MINIMAP_WIDTH / iso_width
-        mini_height = iso_height * scale
-
-        rect_x = SCREEN_W - MINIMAP_WIDTH - MINIMAP_MARGIN
-        rect_y = SCREEN_H - mini_height - MINIMAP_MARGIN
+        
+        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2
+        base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
+        
+        scale = MINIMAP_WIDTH / base_iso_w
+        mini_height = base_iso_h * scale
+        
+        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN
+        rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
         offset_x_world = max_rows * TILE_WIDTH / 2
 
         def to_mini(r, c):
-            wx, wy = self.cart_to_iso(r, c)
+            wx = (c - r) * (TILE_WIDTH // 2)
+            wy = (r + c) * (TILE_HEIGHT // 2)
             mx = rect_x + (wx + offset_x_world) * scale
-            my = rect_y + (wy) * scale
+            my = rect_y + wy * scale
             return mx, my
 
-        # 1. Fond Gris Foncé (Rectangle ajusté)
+        # 2. Dessin Fond et Carte
         pygame.draw.rect(screen, COLOR_MINIMAP_BG, (rect_x, rect_y, MINIMAP_WIDTH, mini_height))
-        # Bordure Blanche
         pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), MINIMAP_BORDER)
-
-        # 2. Losange Vert (Map)
-        p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
         
-        # On dessine le losange vert par dessus le gris (optionnel, ou on garde juste le gris)
-        pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4]) # Vert un peu plus foncé
-        pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1) # Contour map
+        p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
+        pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4])
+        pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1)
 
-        # 3. Points des Unités
+        # 3. Dessin Unités
         units = getattr(self.game, 'alive_units', lambda: [])()
         for unit in units:
-            u_row = getattr(unit, 'x', 0) 
-            u_col = getattr(unit, 'y', 0) 
-            
-            px, py = to_mini(u_row, u_col)
-
-            team = getattr(unit, 'team', '?')
-            color = COLOR_TEAM_A if team == "A" else COLOR_TEAM_B
-            
-            # Petit cercle
+            px, py = to_mini(getattr(unit, 'x', 0), getattr(unit, 'y', 0))
+            color = COLOR_TEAM_A if getattr(unit, 'team', '?') == "A" else COLOR_TEAM_B
             pygame.draw.circle(screen, color, (int(px), int(py)), 3)
 
-        # 4. Cadre de la Caméra
-        # Position du coin haut-gauche de la caméra dans le monde
-        cam_world_x = -self.camera_x
-        cam_world_y = -self.camera_y
+        # 4. Dessin du Cadre Caméra (CORRIGÉ)
+        # On divise par le zoom pour obtenir les vraies coordonnées monde
+        view_w_world = self.screen_w / self.zoom
+        view_h_world = self.screen_h / self.zoom
         
+        # --- LA CORRECTION EST ICI ---
+        cam_world_x = -self.camera_x / self.zoom
+        cam_world_y = -self.camera_y / self.zoom
+        # -----------------------------
+
         mini_cam_x = rect_x + (cam_world_x + offset_x_world) * scale
-        mini_cam_y = rect_y + (cam_world_y) * scale
+        mini_cam_y = rect_y + cam_world_y * scale
         
-        mini_cam_w = SCREEN_W * scale
-        mini_cam_h = SCREEN_H * scale
+        mini_cam_w = view_w_world * scale
+        mini_cam_h = view_h_world * scale
         
-        # On dessine le rectangle de vue
-        # On utilise un clipping pour qu'il ne sorte pas du cadre gris (esthétique)
-        camera_rect = pygame.Rect(mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h)
-        
-        # Dessin du cadre (non clippé pour voir où on est même si hors map)
-        pygame.draw.rect(screen, COLOR_VIEWPORT, camera_rect, 1)
+        pygame.draw.rect(screen, COLOR_VIEWPORT, (mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h), 1)
 
-    # --- NOUVEAU : Méthode pour dessiner les stats ---
     def draw_army_stats(self, screen):
-        """ Affiche les panneaux de statistiques des armées """
         if not self.show_ui_master: return
-
-        # 1. Calcul des comptes en temps réel
-        counts = {'A': {}, 'B': {}}
-        totals = {'A': 0, 'B': 0}
-
+        counts = {'A': {}, 'B': {}}; totals = {'A': 0, 'B': 0}
         units = getattr(self.game, 'alive_units', lambda: [])()
         for u in units:
-            team = getattr(u, 'team', '?')
-            u_type = type(u).__name__
-            
+            team = getattr(u, 'team', '?'); u_type = type(u).__name__
             if team not in counts: counts[team] = {}
-            
-            counts[team][u_type] = counts[team].get(u_type, 0) + 1
-            totals[team] += 1
-
-        # 2. Dessin Panneau A (Gauche)
-        if self.show_panel_a:
-            self._draw_single_panel(screen, "Équipe A (Bleu)", counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
-
-        # 3. Dessin Panneau B (Droite)
-        if self.show_panel_b:
-            self._draw_single_panel(screen, "Équipe B (Rouge)", counts.get('B', {}), totals.get('B', 0), SCREEN_W - 220, 20, COLOR_TEAM_B)
+            counts[team][u_type] = counts[team].get(u_type, 0) + 1; totals[team] += 1
+        if self.show_panel_a: self._draw_single_panel(screen, "Équipe A", counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
+        if self.show_panel_b: self._draw_single_panel(screen, "Équipe B", counts.get('B', {}), totals.get('B', 0), self.screen_w - 220, 20, COLOR_TEAM_B)
 
     def _draw_single_panel(self, screen, title, data, total, x, y, color):
-        # Hauteur dynamique
         h = 35
-        if self.show_details:
-            h += len(data) * 20 + 5
-
-        # Fond
-        s = pygame.Surface((200, h), pygame.SRCALPHA)
-        s.fill(COLOR_PANEL_BG) 
-        screen.blit(s, (x, y))
-        
-        # Bordure de couleur
+        if self.show_details: h += len(data) * 20 + 5
+        s = pygame.Surface((200, h), pygame.SRCALPHA); s.fill(COLOR_PANEL_BG); screen.blit(s, (x, y))
         pygame.draw.rect(screen, color, (x, y, 4, h))
-
-        # Titre
-        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT)
-        screen.blit(title_surf, (x + 10, y + 8))
-
-        # Détails
+        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT); screen.blit(title_surf, (x + 10, y + 8))
         if self.show_details:
             y_off = 35
             for u_type, count in sorted(data.items()):
-                # Icône
                 icon = self.assets.get(u_type.lower())
                 txt_x = x + 10
                 if icon:
-                    icon_small = pygame.transform.scale(icon, (16, 16))
-                    screen.blit(icon_small, (x + 10, y + y_off))
-                    txt_x = x + 30
-                
-                txt_surf = self.font_ui.render(f"{u_type}: {count}", True, (200, 200, 200))
-                screen.blit(txt_surf, (txt_x, y + y_off))
-                y_off += 20
+                    try: icon_ui = pygame.transform.scale(icon, (16, 16)); screen.blit(icon_ui, (x + 10, y + y_off)); txt_x = x + 30
+                    except: pass
+                txt_surf = self.font_ui.render(f"{u_type}: {count}", True, (200, 200, 200)); screen.blit(txt_surf, (txt_x, y + y_off)); y_off += 20
 
     def draw(self, screen):
         screen.fill((20, 20, 20))
-
-        # MAP
+        tw, th = self.get_scaled_tile_size()
         if self.map:
-            rows = getattr(self.map, 'rows', 20)
-            cols = getattr(self.map, 'cols', 20)
+            rows = getattr(self.map, 'rows', 20); cols = getattr(self.map, 'cols', 20)
+            scaled_grass = pygame.transform.scale(self.assets['grass'], (int(tw), int(th)))
             for row in range(rows):
                 for col in range(cols):
-                    x, y = self.cart_to_iso(row, col)
-                    final_x = x + self.camera_x
-                    final_y = y + self.camera_y
-                    if -64 < final_x < SCREEN_W and -32 < final_y < SCREEN_H:
-                        screen.blit(self.assets['grass'], (final_x, final_y))
-
-        # UNITÉS
+                    x, y = self.cart_to_iso(row, col); final_x = x + self.camera_x; final_y = y + self.camera_y
+                    if -tw < final_x < self.screen_w and -th < final_y < self.screen_h: screen.blit(scaled_grass, (final_x, final_y))
         units = getattr(self.game, 'alive_units', lambda: [])()
         for unit in units:
             u_x = getattr(unit, 'x', 0); u_y = getattr(unit, 'y', 0)
             x_iso, y_iso = self.cart_to_iso(u_x, u_y)
-            screen_x = x_iso + self.camera_x + 8; screen_y = y_iso + self.camera_y - 20
-
-            team = getattr(unit, 'team', '?')
-            color = COLOR_TEAM_A if team == "A" else COLOR_TEAM_B
-            pygame.draw.ellipse(screen, color, (screen_x + 5, screen_y + 40, 30, 8))
-
-            u_type = type(unit).__name__.lower()
-            img = self.assets.get(u_type, self.assets.get('knight'))
-            
-            if img:
-                if team == "A":
-                    img = pygame.transform.flip(img, True, False)
-                screen.blit(img, (screen_x, screen_y))
-            
-            hp = getattr(unit, 'hp', 0)
-            if hp > 0:
-                pygame.draw.rect(screen, (0,0,0), (screen_x, screen_y - 5, 40, 4))
-                w = min(40, max(0, int(hp / 2.5))) 
-                pygame.draw.rect(screen, (0, 255, 0), (screen_x, screen_y - 5, w, 4))
-
-        # --- DESSIN DES PANNEAUX UI (EN DERNIER) ---
+            screen_x = x_iso + self.camera_x; screen_y = y_iso + self.camera_y 
+            if -100 < screen_x < self.screen_w and -100 < screen_y < self.screen_h:
+                u_type = type(unit).__name__.lower(); orig_img = self.assets.get(u_type, self.assets.get('knight'))
+                if orig_img:
+                    img_w = int(orig_img.get_width() * self.zoom); img_h = int(orig_img.get_height() * self.zoom)
+                    scaled_img = pygame.transform.scale(orig_img, (img_w, img_h))
+                    team = getattr(unit, 'team', '?')
+                    if team == "A": scaled_img = pygame.transform.flip(scaled_img, True, False)
+                    draw_x = screen_x + (tw // 2) - (img_w // 2); draw_y = screen_y - (img_h // 1.5)
+                    ellipse_w = int(30 * self.zoom); ellipse_h = int(8 * self.zoom)
+                    pygame.draw.ellipse(screen, COLOR_TEAM_A if team == "A" else COLOR_TEAM_B, (screen_x + (tw//2) - ellipse_w//2, screen_y + (th//2) - ellipse_h//2, ellipse_w, ellipse_h))
+                    screen.blit(scaled_img, (draw_x, draw_y))
+                    hp = getattr(unit, 'hp', 0)
+                    if hp > 0:
+                        bar_w = int(40 * self.zoom); bar_h = int(4 * self.zoom); life_w = min(bar_w, max(0, int(hp / 2.5 * self.zoom)))
+                        pygame.draw.rect(screen, (0,0,0), (draw_x, draw_y - bar_h - 2, bar_w, bar_h))
+                        pygame.draw.rect(screen, (0, 255, 0), (draw_x, draw_y - bar_h - 2, life_w, bar_h))
         self.draw_minimap(screen)
         self.draw_army_stats(screen)

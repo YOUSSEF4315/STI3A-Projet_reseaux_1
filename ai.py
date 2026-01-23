@@ -194,7 +194,7 @@ class PredictEinstein(BaseController):
             for e in enemies:
                 i=0
                 total_damage=0
-                while i<5:
+                while i<1:
                     i=i+1
                     """Renvoie le nombre de tours i nécessaire a tuer l'ennemi , jusqu'a essayer 5 tours."""
                     dx = e.x - x

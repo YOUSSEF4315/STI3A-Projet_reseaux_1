@@ -1,6 +1,6 @@
 from game import Game
 from map import BattleMap
-from ai import CaptainBraindead, MajorDaft,AssasinJack
+from ai import CaptainBraindead, MajorDaft,AssasinJack,PredictEinstein
 from knight import Knight
 from pikeman import Pikeman
 from crossbowman import Crossbowman
@@ -12,8 +12,8 @@ def scenario_simple_vs_braindead() -> Game:
     battle_map = BattleMap(rows=rows, cols=cols)
 
     controllers = {
-        "A": CaptainBraindead("A"),
-        "B": AssasinJack("B"),
+        "A": MajorDaft("A"),
+        "B": PredictEinstein("B"),
         
     }
 
