@@ -83,7 +83,7 @@ def main():
         # --- LOGIQUE DE JEU (MODEL) ---
         if not game.is_finished():
             if auto_play:
-                game.step(dt=0.1)
+                game.step(dt=0.02)
         
         else:
             # Fin de partie (Console)

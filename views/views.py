@@ -1,5 +1,5 @@
 import pygame
-import webbrowser
+import math
 import os
 import pickle
 
@@ -22,6 +22,83 @@ COLOR_VIEWPORT = (255, 255, 255)
 COLOR_PANEL_BG = (0, 0, 0, 180)
 COLOR_TEXT = (255, 255, 255)
 
+# --- GESTION ANIMATION ---
+class AnimationManager:
+    def __init__(self):
+        self.animations = {} # {unit_type: {action: {direction_idx: [frames]}}}
+        self.default_assets = {} # Fallback static assets
+
+    def load_spritesheet(self, unit_name, action, path, rows=8, cols=15, target_size=(100, 100)):
+        if not os.path.exists(path):
+            print(f"Warning: Sprite {path} not found.")
+            return False
+
+        try:
+            sheet = pygame.image.load(path).convert_alpha()
+            sheet_w, sheet_h = sheet.get_size()
+            frame_w = sheet_w // cols
+            frame_h = sheet_h // rows
+
+            if unit_name not in self.animations:
+                self.animations[unit_name] = {}
+            if action not in self.animations[unit_name]:
+                self.animations[unit_name][action] = {}
+
+            # On suppose que les rangées correspondent aux directions
+            # Standard Isometric Directions often:
+            # Row order can vary. We will store simple 0..rows.
+            for r in range(rows):
+                frames = []
+                for c in range(cols):
+                    rect = pygame.Rect(c*frame_w, r*frame_h, frame_w, frame_h)
+                    try:
+                        sub = sheet.subsurface(rect)
+                        scaled = pygame.transform.smoothscale(sub, target_size)
+                        frames.append(scaled)
+                    except ValueError:
+                        pass # Out of bounds?
+                self.animations[unit_name][action][r] = frames
+            
+            print(f"Loaded animation: {unit_name} / {action} ({rows} dirs, {cols} frames)")
+            return True
+        except Exception as e:
+            print(f"Error loading sprite {path}: {e}")
+            return False
+
+    def get_frame(self, unit_name, action, direction, frame_idx):
+        """
+        Retrieves the specific frame.
+        unit_name: 'knight', 'pikeman', etc.
+        action: 'walk', 'idle', 'attack'
+        direction: 0-7
+        frame_idx: int
+        """
+        # Fallback to idle if action not found
+        if unit_name not in self.animations:
+            return None
+        
+        # Check specific action, fallback to 'idle', then 'walk'
+        anim_set = self.animations[unit_name].get(action)
+        if not anim_set:
+            anim_set = self.animations[unit_name].get('idle')
+        if not anim_set:
+            anim_set = self.animations[unit_name].get('walk')
+            
+        if not anim_set:
+            return None
+
+        # Clamp direction
+        d = direction % 8
+        if d not in anim_set:
+            # Fallback to first available direction
+            d = next(iter(anim_set.keys()), 0)
+        
+        frames = anim_set[d]
+        if not frames:
+            return None
+            
+        return frames[frame_idx % len(frames)]
+
 class GUI:
     def __init__(self, game_instance, screen_width=DEFAULT_SCREEN_W, screen_height=DEFAULT_SCREEN_H):
         self.game = game_instance
@@ -39,7 +116,7 @@ class GUI:
         self.center_camera_on(10, 10)
         
         # --- SOLUTION DRAG & DROP ---
-        self.is_dragging = False  # L'interrupteur magique
+        self.is_dragging = False
         
         # UI States
         self.show_minimap = True
@@ -49,39 +126,63 @@ class GUI:
         self.show_ui_master = True
         self.last_toggle_time = 0
         
-        self.assets = {}
+        # --- ANIMATION SYSTEM ---
+        self.anim_mgr = AnimationManager()
+        self.assets = {} # For static assets (grass, icons)
+        self.unit_states = {} # {id(unit): {'last_pos': (x,y), 'last_time': t, 'direction': 0, 'action': 'idle', 'frame_idx': 0}}
         self._load_assets()
 
         pygame.font.init()
         self.font_ui = pygame.font.SysFont("Arial", 14)
         self.font_title = pygame.font.SysFont("Arial", 16, bold=True)
         
-        # Purge du mouvement initial
         pygame.mouse.get_rel()
 
     def _load_assets(self):
+        # 1. Load Static Environment
         try:
-            img = pygame.image.load("assets/grass.png").convert()
+            img = pygame.image.load("assets/grass.PNG").convert() # Note: .PNG extension case matched from files
             img.set_colorkey(img.get_at((0,0)))
             self.assets['grass'] = pygame.transform.scale(img, (TILE_WIDTH, TILE_HEIGHT))
         except:
-            s = pygame.Surface((TILE_WIDTH, TILE_HEIGHT)); s.fill((34, 139, 34))
-            self.assets['grass'] = s
-
-        try:
-            img_k = pygame.image.load("assets/knight.png").convert_alpha()
-            self.assets['knight'] = pygame.transform.scale(img_k, (50, 50))
-        except:
-            s = pygame.Surface((30, 30), pygame.SRCALPHA); pygame.draw.circle(s, (200, 0, 0), (15, 15), 15)
-            self.assets['knight'] = s
-
-        for name in ["pikeman", "crossbowman"]:
+            # Fallback try lowercase
             try:
-                img = pygame.image.load(f"assets/{name}.png").convert_alpha()
-                self.assets[name] = pygame.transform.scale(img, (40, 40))
+                img = pygame.image.load("assets/grass.png").convert() # Try lowercase
+                img.set_colorkey(img.get_at((0,0)))
+                self.assets['grass'] = pygame.transform.scale(img, (TILE_WIDTH, TILE_HEIGHT))
             except:
-                s = pygame.Surface((30, 30), pygame.SRCALPHA); pygame.draw.circle(s, (100, 100, 100), (15, 15), 12)
-                self.assets[name] = s
+                s = pygame.Surface((TILE_WIDTH, TILE_HEIGHT)); s.fill((34, 139, 34))
+                self.assets['grass'] = s
+
+        # 2. Load Unit Animations
+        # Structure: assets/units/[UnitName]/[action]/[UnitName]_[action].webp
+        # Unit Names in folders: Knight, Pikeman, crossbowman
+        # Types in code (lowercase): knight, pikeman, crossbowman
+        
+        units_to_load = [
+            ("knight", "Knight"),
+            ("pikeman", "Pikeman"),
+            ("crossbowman", "crossbowman")
+        ]
+        
+        actions = ["walk", "idle", "attack", "death", "decay"]
+        
+        for code_name, folder_name in units_to_load:
+            for action in actions:
+                # Construct path
+                filename = f"{folder_name}_{action}.webp"
+                path = os.path.join("assets", "units", folder_name, action, filename)
+                
+                # Load with 16 rows (directions) and 30 columns (frames)
+                # Frame size: 6000/30 = 200w, 3200/16=200h. Ratio 1:1.
+                # Scale to 160x160
+                self.anim_mgr.load_spritesheet(code_name, action, path, rows=16, cols=30, target_size=(160, 160))
+                
+        # 3. Load Icons for UI (Static Fallbacks)
+        for code_name, folder_name in units_to_load:
+            # Use 'idle' first frame or static image if exists
+            # Helper to generate an icon from animation if static not found
+            pass
 
     def get_scaled_tile_size(self):
         return TILE_WIDTH * self.zoom, TILE_HEIGHT * self.zoom
@@ -109,73 +210,53 @@ class GUI:
 
     # --- 1. GESTION DES CLICS (EVENTS) ---
     def handle_events(self, event):
-        """ Gère les actions 'one-shot' : Clic, Relâchement, Zoom, Resize """
-        
-        # Redimensionnement
         if event.type == pygame.VIDEORESIZE:
             self.screen_w, self.screen_h = event.w, event.h
 
-        # Zoom (Molette Scroll) - Centré sur la position de la souris
         elif event.type == pygame.MOUSEWHEEL:
-            # Obtenir la position de la souris
             mouse_x, mouse_y = pygame.mouse.get_pos()
-
-            # Calculer la position "monde" avant le zoom
             old_zoom = self.zoom
             world_x = (mouse_x - self.camera_x) / old_zoom
             world_y = (mouse_y - self.camera_y) / old_zoom
 
-            # Appliquer le nouveau zoom
             if event.y > 0:
                 self.zoom = min(self.max_zoom, self.zoom + 0.1)
             elif event.y < 0:
                 self.zoom = max(self.min_zoom, self.zoom - 0.1)
 
-            # Ajuster la caméra pour que le point sous la souris reste au même endroit
             self.camera_x = mouse_x - world_x * self.zoom
             self.camera_y = mouse_y - world_y * self.zoom
 
-        # DÉBUT DU CLIC (Appui)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = pygame.mouse.get_pos()
-            # Clic gauche (1), Clic molette (2), Clic droit (3)
-            # On autorise le drag pour tous SAUF si clic gauche sur la minimap
             if event.button in [1, 2, 3]:
-                # Si c'est un clic gauche ET qu'on clique sur la minimap, on ne démarre pas le drag
                 if event.button == 1 and self._is_click_on_minimap(mx, my):
-                    pass  # La minimap gérera le clic dans handle_input
+                    pass
                 else:
                     self.is_dragging = True
-                    pygame.mouse.get_rel()  # Important : On remet le compteur de mouvement à zéro ici !
+                    pygame.mouse.get_rel()
 
-        # FIN DU CLIC (Relâchement)
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button in [1, 2, 3]:
                 self.is_dragging = False
 
     # --- 2. GESTION CONTINUE (BOUCLE) ---
     def handle_input(self):
-        """ Gère le mouvement continu tant que le bouton est actif """
         keys = pygame.key.get_pressed()
         
-        # Clavier
         s = 20 / self.zoom 
         if keys[pygame.K_LEFT]: self.camera_x += s
         if keys[pygame.K_RIGHT]: self.camera_x -= s
         if keys[pygame.K_UP]: self.camera_y += s
         if keys[pygame.K_DOWN]: self.camera_y -= s
 
-        # Souris (Si l'interrupteur est ON)
         if self.is_dragging:
             dx, dy = pygame.mouse.get_rel()
             self.camera_x += dx
             self.camera_y += dy
         else:
-            # On vide le buffer de mouvement même si on ne bouge pas la caméra
-            # pour éviter un saut au prochain clic
             pygame.mouse.get_rel()
 
-        # Raccourcis UI
         current_time = pygame.time.get_ticks()
         if current_time - self.last_toggle_time > 200:
             if keys[pygame.K_F1]: self.show_panel_a = not self.show_panel_a; self.last_toggle_time = current_time
@@ -186,11 +267,332 @@ class GUI:
             if keys[pygame.K_F11]: self._quick_save(); self.last_toggle_time = current_time
             if keys[pygame.K_F12]: self._quick_load(); self.last_toggle_time = current_time
 
-        # Minimap (Clic Gauche standard)
         if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and not self.is_dragging:
             self._handle_minimap_click()
 
-    # ... (Le reste des méthodes est identique et n'a pas besoin de changer) ...
+    # --- HELPERS ANIMATION (NOUVEAU) ---
+    def _update_unit_state(self, unit):
+        """Met à jour l'état visuel (direction, action) basé sur la position et la vie."""
+        uid = id(unit)
+        now = pygame.time.get_ticks()
+        is_dead = getattr(unit, 'hp', 0) <= 0
+        
+        if uid not in self.unit_states:
+            # UNIFORM DEFAULT 15 (Left)
+            # A (East) -> Inverted(0) = 15.
+            # B (West) -> Standard(15) = 15.
+            default_dir = 15
+            
+            self.unit_states[uid] = {
+                'last_pos': (unit.x, unit.y),
+                'last_time': now,
+                'direction': default_dir,
+                'action': 'idle',
+                'frame_idx': 0,
+                'accum_time': 0,
+                'gone': False # Flag to stop drawing after decay
+            }
+            # Si on spawn mort (ne devrait pas arriver), on force la mort
+            if is_dead:
+                 self.unit_states[uid]['action'] = 'death'
+            
+            return self.unit_states[uid]
+
+        state = self.unit_states[uid]
+        if state['gone']:
+            return state
+
+        dt = now - state['last_time']
+        
+        # --- LOGIQUE DE MORT ---
+        if is_dead:
+            if state['action'] not in ['death', 'decay']:
+                state['action'] = 'death'
+                state['frame_idx'] = 0
+                state['accum_time'] = 0
+            
+            # Gestion Animation One-Shot (Death -> Decay -> Gone)
+            state['accum_time'] += dt
+            if state['accum_time'] > 100:
+                state['accum_time'] = 0
+                
+                # Check end of animation
+                u_type = type(unit).__name__.lower()
+                current_anim = self.anim_mgr.animations.get(u_type, {}).get(state['action'], {}).get(state['direction'], [])
+                total_frames = len(current_anim)
+                
+                if state['frame_idx'] < total_frames - 1:
+                    state['frame_idx'] += 1
+                else:
+                    # Animation Finished
+                    if state['action'] == 'death':
+                        state['action'] = 'decay'
+                        state['frame_idx'] = 0
+                    elif state['action'] == 'decay':
+                         state['gone'] = True
+        
+        else:
+            # --- LOGIQUE VIVANT ---
+            dx = unit.x - state['last_pos'][0]
+            dy = unit.y - state['last_pos'][1]
+            dist = math.hypot(dx, dy)
+            is_moving = dist > 0.001
+            
+            # Cooldown Monitoring for Attack Detection
+            current_cd = getattr(unit, 'cooldown', 0)
+            last_cd = state.get('last_cooldown', 0)
+            
+            # Trigger Attack if cooldown INCREASED (meaning it was reset by an attack)
+            # We also treat high cooldown as possible attack if we are not moving
+            if current_cd > last_cd and not is_moving:
+                 state['action'] = 'attack'
+                 state['frame_idx'] = 0
+                 state['accum_time'] = 0
+            
+            # State Machine for Living Units
+            # 1. Moving overrides everything (Hit & Run / Chase)
+            if is_moving:
+                new_action = 'walk'
+                # Update Direction
+                angle = math.degrees(math.atan2(dy, dx))
+                
+                # MAPPING 0 (Right) to 15 (Left) based on User Feedback.
+                # Use Absolute angle to map North (neg) to South (pos) as data seems 180-deg only.
+                # 0 deg (Rights) -> 0
+                # +/-180 deg (Left) -> 15
+                idx = int(abs(angle) / 180.0 * 15)
+                idx = max(0, min(15, idx))
+                
+                # INVERSION GLOBAL (Symmetry for Movement)
+                idx = 15 - idx
+                
+                state['direction'] = idx
+                
+            elif state['action'] == 'attack':
+                # 2. Finishing Attack Animation
+                new_action = 'attack'
+                
+                # --- FIX ORIENTATION TIREURS ---
+                # Si on attaque une cible, on se tourne vers elle !
+                intent = getattr(unit, 'intent', None)
+                if intent and len(intent) >= 2 and intent[0] == 'attack':
+                     target = intent[1]
+                     if target and getattr(target, 'hp', 0) > 0:
+                         dx_t = target.x - unit.x
+                         dy_t = target.y - unit.y
+                         angle_t = math.degrees(math.atan2(dy_t, dx_t))
+                         
+                         idx_t = int(abs(angle_t) / 180.0 * 15)
+                         idx_t = max(0, min(15, idx_t))
+                         
+                         idx_t = int(abs(angle_t) / 180.0 * 15)
+                         idx_t = max(0, min(15, idx_t))
+                         
+                         # Apply global inversion (standard baseline)
+                         idx_t = 15 - idx_t
+                         
+                         # SPECIFIC FIX FOR CROSSBOWMAN TEAM B
+                         # User reports they shoot "where nobody is" (Backwards).
+                         # We rotate them 180 degrees (-/+ 8 rows) to face the enemy.
+                         u_type_temp = type(unit).__name__.lower()
+                         unit_team = getattr(unit, 'team', 'A')
+                         
+                         if u_type_temp == 'crossbowman' and unit_team == 'B':
+                             idx_t = (idx_t + 8) % 16
+                             
+                         state['direction'] = idx_t
+
+                # Check Frame End
+                u_type = type(unit).__name__.lower()
+                current_anim = self.anim_mgr.animations.get(u_type, {}).get('attack', {}).get(state['direction'], [])
+                
+                # If animation finished or no anim, go back to idle
+                if not current_anim or state['frame_idx'] >= len(current_anim) - 1:
+                    new_action = 'idle'
+                    
+            else:
+                # 3. Default Idle
+                new_action = 'idle'
+
+            # Apply State Change
+            if new_action != state['action']:
+                # Don't reset frame if we are just continuing attack
+                if not (state['action'] == 'attack' and new_action == 'attack'):
+                    state['action'] = new_action
+                    state['frame_idx'] = 0
+                    state['accum_time'] = 0
+            else:
+                # Advance Frame
+                state['accum_time'] += dt
+                
+                speed_factor = 1.0
+                # Speed up attack if reload time is fast? 
+                # For now constant speed.
+                
+                if state['accum_time'] > 100: # 100ms per frame
+                    state['frame_idx'] += 1
+                    state['accum_time'] = 0
+
+            state['last_pos'] = (unit.x, unit.y)
+            state['last_cooldown'] = current_cd # Save for next frame
+        
+        return state
+
+    def draw(self, screen):
+        screen.fill((20, 20, 20))
+        tw, th = self.get_scaled_tile_size()
+        
+        # Draw Map
+        if self.map:
+            rows = getattr(self.map, 'rows', 20); cols = getattr(self.map, 'cols', 20)
+            scaled_grass = pygame.transform.scale(self.assets['grass'], (int(tw), int(th)))
+            for row in range(rows):
+                for col in range(cols):
+                    x, y = self.cart_to_iso(row, col); final_x = x + self.camera_x; final_y = y + self.camera_y
+                    if -tw < final_x < self.screen_w and -th < final_y < self.screen_h: 
+                        screen.blit(scaled_grass, (final_x, final_y))
+
+        # Draw ALL Units (Alive + Dead animating)
+        # Note: game.alive_units() only gives living. We need self.game.units
+        all_units = getattr(self.game, 'units', [])
+        # Sort for depth (Painters algorithm)
+        sorted_units = sorted(all_units, key=lambda u: u.x + u.y) 
+
+        for unit in sorted_units:
+            # Skip if hidden/gone
+            state = self._update_unit_state(unit)
+            if state.get('gone', False):
+                continue
+                
+            u_x = getattr(unit, 'x', 0); u_y = getattr(unit, 'y', 0)
+            x_iso, y_iso = self.cart_to_iso(u_x, u_y)
+            screen_x = x_iso + self.camera_x; screen_y = y_iso + self.camera_y 
+            
+            if -150 < screen_x < self.screen_w and -150 < screen_y < self.screen_h:
+                u_type = type(unit).__name__.lower()
+                
+                # Get Frame
+                frame = self.anim_mgr.get_frame(u_type, state['action'], state['direction'], state['frame_idx'])
+                
+                if frame:
+                    img_w = int(frame.get_width() * self.zoom)
+                    img_h = int(frame.get_height() * self.zoom)
+                    scaled_img = pygame.transform.scale(frame, (img_w, img_h))
+                    
+                    draw_x = screen_x + (tw // 2) - (img_w // 2)
+                    draw_y = screen_y + (th // 2) - int(img_h * 0.7)
+
+                    is_alive = getattr(unit, 'hp', 0) > 0
+
+                    if is_alive:
+                        # Shadow & Team Circle only for living
+                        team = getattr(unit, 'team', '?')
+                        ellipse_w = int(30 * self.zoom)
+                        ellipse_h = int(15 * self.zoom)
+                        
+                        shadow_surf = pygame.Surface((ellipse_w, ellipse_h), pygame.SRCALPHA)
+                        pygame.draw.ellipse(shadow_surf, (0, 0, 0, 100), (0, 0, ellipse_w, ellipse_h))
+                        shadow_x = screen_x + (tw // 2) - (ellipse_w // 2)
+                        shadow_y = screen_y + (th // 2) - (ellipse_h // 4)
+                        screen.blit(shadow_surf, (shadow_x, shadow_y))
+                        
+                        pygame.draw.ellipse(screen, COLOR_TEAM_A if team == "A" else COLOR_TEAM_B, (screen_x + (tw//2) - ellipse_w//2, screen_y + (th//2) - ellipse_h//2, ellipse_w, ellipse_h), 1)
+
+                    screen.blit(scaled_img, (draw_x, draw_y))
+                    
+                    if is_alive:
+                        hp = getattr(unit, 'hp', 0)
+                        max_hp = getattr(unit, 'max_hp', hp)
+                        if hp > 0 and hp < max_hp:
+                            bar_w = int(30 * self.zoom); bar_h = int(3 * self.zoom)
+                            ratio = hp / max_hp
+                            pygame.draw.rect(screen, (0,0,0), (draw_x + img_w//2 - bar_w//2, draw_y - 5, bar_w, bar_h))
+                            color = (0, 255, 0)
+                            if ratio < 0.3: color = (255, 0, 0)
+                            pygame.draw.rect(screen, color, (draw_x + img_w//2 - bar_w//2, draw_y - 5, int(ratio * bar_w), bar_h))
+                else:
+                    if getattr(unit, 'hp', 0) > 0:
+                         pygame.draw.circle(screen, (255, 255, 255), (int(screen_x), int(screen_y)), 10)
+
+        self.draw_minimap(screen)
+        self.draw_army_stats(screen)
+
+    # ... Helper drawing methods ...
+    def draw_minimap(self, screen):
+        if not self.show_minimap or not self.map or not self.show_ui_master: return
+        max_rows = getattr(self.map, 'rows', 120)
+        max_cols = getattr(self.map, 'cols', 120)
+        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2
+        base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
+        scale = MINIMAP_WIDTH / base_iso_w
+        mini_height = base_iso_h * scale
+        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN
+        rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
+        offset_x_world = max_rows * TILE_WIDTH / 2
+
+        def to_mini(r, c):
+            wx = (c - r) * (TILE_WIDTH // 2)
+            wy = (r + c) * (TILE_HEIGHT // 2)
+            mx = rect_x + (wx + offset_x_world) * scale
+            my = rect_y + wy * scale
+            return mx, my
+
+        pygame.draw.rect(screen, COLOR_MINIMAP_BG, (rect_x, rect_y, MINIMAP_WIDTH, mini_height))
+        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), MINIMAP_BORDER)
+        p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
+        pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4])
+        pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1)
+        
+        units = getattr(self.game, 'alive_units', lambda: [])()
+        for unit in units:
+            px, py = to_mini(getattr(unit, 'x', 0), getattr(unit, 'y', 0))
+            color = COLOR_TEAM_A if getattr(unit, 'team', '?') == "A" else COLOR_TEAM_B
+            pygame.draw.circle(screen, color, (int(px), int(py)), 3)
+
+        view_w_world = self.screen_w / self.zoom
+        view_h_world = self.screen_h / self.zoom
+        cam_world_x = -self.camera_x / self.zoom
+        cam_world_y = -self.camera_y / self.zoom
+        mini_cam_x = rect_x + (cam_world_x + offset_x_world) * scale
+        mini_cam_y = rect_y + cam_world_y * scale
+        mini_cam_w = view_w_world * scale
+        mini_cam_h = view_h_world * scale
+        pygame.draw.rect(screen, COLOR_VIEWPORT, (mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h), 1)
+
+    def draw_army_stats(self, screen):
+        if not self.show_ui_master: return
+        counts = {'A': {}, 'B': {}}; totals = {'A': 0, 'B': 0}
+        units = getattr(self.game, 'alive_units', lambda: [])()
+        for u in units:
+            team = getattr(u, 'team', '?'); u_type = type(u).__name__
+            if team not in counts: counts[team] = {}
+            counts[team][u_type] = counts[team].get(u_type, 0) + 1; totals[team] += 1
+
+        ai_name_a = type(self.game.controllers.get('A')).__name__ if 'A' in self.game.controllers else "?"
+        ai_name_b = type(self.game.controllers.get('B')).__name__ if 'B' in self.game.controllers else "?"
+
+        if self.show_panel_a: self._draw_single_panel(screen, "Équipe A", ai_name_a, counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
+        if self.show_panel_b: self._draw_single_panel(screen, "Équipe B", ai_name_b, counts.get('B', {}), totals.get('B', 0), self.screen_w - 220, 20, COLOR_TEAM_B)
+
+    def _draw_single_panel(self, screen, title, ai_name, data, total, x, y, color):
+        h = 50
+        if self.show_details: h += len(data) * 20 + 5
+        s = pygame.Surface((200, h), pygame.SRCALPHA); s.fill(COLOR_PANEL_BG); screen.blit(s, (x, y))
+        pygame.draw.rect(screen, color, (x, y, 4, h))
+        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT)
+        screen.blit(title_surf, (x + 10, y + 8))
+        ai_surf = self.font_ui.render(f"IA: {ai_name}", True, (180, 180, 180))
+        screen.blit(ai_surf, (x + 10, y + 26))
+
+        if self.show_details:
+            y_off = 50
+            for u_type, count in sorted(data.items()):
+                # Try to get stats from generic assets? Or just text.
+                # Since we moved assets to anim_mgr, we might not have 'icon'.
+                # But we can try validation.
+                txt_x = x + 10
+                txt_surf = self.font_ui.render(f"{u_type}: {count}", True, (200, 200, 200)); screen.blit(txt_surf, (txt_x, y + y_off)); y_off += 20
+
     def _quick_save(self):
         try:
             with open("quicksave.pkl", "wb") as f: pickle.dump(self.game, f)
@@ -208,7 +610,6 @@ class GUI:
             except Exception as e: print(f"Erreur Load: {e}")
 
     def _is_click_on_minimap(self, mx, my):
-        """Vérifie si un clic est sur la minimap"""
         if not self.map or not self.show_minimap or not self.show_ui_master:
             return False
         max_rows = getattr(self.map, 'rows', 120)
@@ -242,149 +643,3 @@ class GUI:
             world_y = rel_y / scale
             self.camera_x = (self.screen_w // 2) - world_x
             self.camera_y = (self.screen_h // 2) - world_y
-
-    def draw_minimap(self, screen):
-        if not self.show_minimap or not self.map or not self.show_ui_master: return
-
-        # 1. Calculs de base
-        max_rows = getattr(self.map, 'rows', 120)
-        max_cols = getattr(self.map, 'cols', 120)
-        
-        base_iso_w = (max_cols + max_rows) * TILE_WIDTH / 2
-        base_iso_h = (max_cols + max_rows) * TILE_HEIGHT / 2
-        
-        scale = MINIMAP_WIDTH / base_iso_w
-        mini_height = base_iso_h * scale
-        
-        rect_x = self.screen_w - MINIMAP_WIDTH - MINIMAP_MARGIN
-        rect_y = self.screen_h - mini_height - MINIMAP_MARGIN
-        offset_x_world = max_rows * TILE_WIDTH / 2
-
-        def to_mini(r, c):
-            wx = (c - r) * (TILE_WIDTH // 2)
-            wy = (r + c) * (TILE_HEIGHT // 2)
-            mx = rect_x + (wx + offset_x_world) * scale
-            my = rect_y + wy * scale
-            return mx, my
-
-        # 2. Dessin Fond et Carte
-        pygame.draw.rect(screen, COLOR_MINIMAP_BG, (rect_x, rect_y, MINIMAP_WIDTH, mini_height))
-        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), MINIMAP_BORDER)
-        
-        p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
-        pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4])
-        pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1)
-
-        # 3. Dessin Unités
-        units = getattr(self.game, 'alive_units', lambda: [])()
-        for unit in units:
-            px, py = to_mini(getattr(unit, 'x', 0), getattr(unit, 'y', 0))
-            color = COLOR_TEAM_A if getattr(unit, 'team', '?') == "A" else COLOR_TEAM_B
-            pygame.draw.circle(screen, color, (int(px), int(py)), 3)
-
-        # 4. Dessin du Cadre Caméra (CORRIGÉ)
-        # On divise par le zoom pour obtenir les vraies coordonnées monde
-        view_w_world = self.screen_w / self.zoom
-        view_h_world = self.screen_h / self.zoom
-        
-        # --- LA CORRECTION EST ICI ---
-        cam_world_x = -self.camera_x / self.zoom
-        cam_world_y = -self.camera_y / self.zoom
-        # -----------------------------
-
-        mini_cam_x = rect_x + (cam_world_x + offset_x_world) * scale
-        mini_cam_y = rect_y + cam_world_y * scale
-        
-        mini_cam_w = view_w_world * scale
-        mini_cam_h = view_h_world * scale
-        
-        pygame.draw.rect(screen, COLOR_VIEWPORT, (mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h), 1)
-
-    def draw_army_stats(self, screen):
-        if not self.show_ui_master: return
-        counts = {'A': {}, 'B': {}}; totals = {'A': 0, 'B': 0}
-        units = getattr(self.game, 'alive_units', lambda: [])()
-        for u in units:
-            team = getattr(u, 'team', '?'); u_type = type(u).__name__
-            if team not in counts: counts[team] = {}
-            counts[team][u_type] = counts[team].get(u_type, 0) + 1; totals[team] += 1
-
-        # Récupérer les noms des IA
-        ai_name_a = type(self.game.controllers.get('A')).__name__ if 'A' in self.game.controllers else "?"
-        ai_name_b = type(self.game.controllers.get('B')).__name__ if 'B' in self.game.controllers else "?"
-
-        if self.show_panel_a: self._draw_single_panel(screen, "Équipe A", ai_name_a, counts.get('A', {}), totals.get('A', 0), 20, 20, COLOR_TEAM_A)
-        if self.show_panel_b: self._draw_single_panel(screen, "Équipe B", ai_name_b, counts.get('B', {}), totals.get('B', 0), self.screen_w - 220, 20, COLOR_TEAM_B)
-
-    def _draw_single_panel(self, screen, title, ai_name, data, total, x, y, color):
-        # Hauteur de base : titre (18px) + IA (16px) + padding
-        h = 50
-        if self.show_details: h += len(data) * 20 + 5
-        s = pygame.Surface((200, h), pygame.SRCALPHA); s.fill(COLOR_PANEL_BG); screen.blit(s, (x, y))
-        pygame.draw.rect(screen, color, (x, y, 4, h))
-
-        # Titre principal
-        title_surf = self.font_title.render(f"{title}: {total}", True, COLOR_TEXT)
-        screen.blit(title_surf, (x + 10, y + 8))
-
-        # Nom de l'IA (plus petit, en gris)
-        ai_surf = self.font_ui.render(f"IA: {ai_name}", True, (180, 180, 180))
-        screen.blit(ai_surf, (x + 10, y + 26))
-
-        if self.show_details:
-            y_off = 50
-            for u_type, count in sorted(data.items()):
-                icon = self.assets.get(u_type.lower())
-                txt_x = x + 10
-                if icon:
-                    try: icon_ui = pygame.transform.scale(icon, (16, 16)); screen.blit(icon_ui, (x + 10, y + y_off)); txt_x = x + 30
-                    except: pass
-                txt_surf = self.font_ui.render(f"{u_type}: {count}", True, (200, 200, 200)); screen.blit(txt_surf, (txt_x, y + y_off)); y_off += 20
-
-    def draw(self, screen):
-        screen.fill((20, 20, 20))
-        tw, th = self.get_scaled_tile_size()
-        if self.map:
-            rows = getattr(self.map, 'rows', 20); cols = getattr(self.map, 'cols', 20)
-            scaled_grass = pygame.transform.scale(self.assets['grass'], (int(tw), int(th)))
-            for row in range(rows):
-                for col in range(cols):
-                    x, y = self.cart_to_iso(row, col); final_x = x + self.camera_x; final_y = y + self.camera_y
-                    if -tw < final_x < self.screen_w and -th < final_y < self.screen_h: screen.blit(scaled_grass, (final_x, final_y))
-        units = getattr(self.game, 'alive_units', lambda: [])()
-        for unit in units:
-            u_x = getattr(unit, 'x', 0); u_y = getattr(unit, 'y', 0)
-            x_iso, y_iso = self.cart_to_iso(u_x, u_y)
-            screen_x = x_iso + self.camera_x; screen_y = y_iso + self.camera_y 
-            if -100 < screen_x < self.screen_w and -100 < screen_y < self.screen_h:
-                u_type = type(unit).__name__.lower(); orig_img = self.assets.get(u_type, self.assets.get('knight'))
-                if orig_img:
-                    img_w = int(orig_img.get_width() * self.zoom); img_h = int(orig_img.get_height() * self.zoom)
-                    scaled_img = pygame.transform.scale(orig_img, (img_w, img_h))
-                    team = getattr(unit, 'team', '?')
-                    if team == "A": scaled_img = pygame.transform.flip(scaled_img, True, False)
-                    draw_x = screen_x + (tw // 2) - (img_w // 2); draw_y = screen_y - (img_h // 1.5)
-                    ellipse_w = int(30 * self.zoom); ellipse_h = int(8 * self.zoom)
-                    pygame.draw.ellipse(screen, COLOR_TEAM_A if team == "A" else COLOR_TEAM_B, (screen_x + (tw//2) - ellipse_w//2, screen_y + (th//2) - ellipse_h//2, ellipse_w, ellipse_h))
-                    screen.blit(scaled_img, (draw_x, draw_y))
-                    hp = getattr(unit, 'hp', 0)
-                    max_hp = getattr(unit, 'max_hp', hp)
-                    
-                    if hp > 0:
-                        bar_w = int(40 * self.zoom)
-                        bar_h = int(4 * self.zoom)
-                        
-                        # Largeur calculée par rapport au MAX HP (toujours 100% visuellement si full life)
-                        ratio = hp / max_hp if max_hp > 0 else 0
-                        life_w = int(ratio * bar_w)
-                        
-                        # Fond noir
-                        pygame.draw.rect(screen, (0,0,0), (draw_x, draw_y - bar_h - 2, bar_w, bar_h))
-                        
-                        # Barre de vie (Verte, ou Rouge si critique)
-                        color = (0, 255, 0)
-                        if ratio < 0.3: color = (255, 0, 0)
-                        
-                        pygame.draw.rect(screen, color, (draw_x, draw_y - bar_h - 2, life_w, bar_h))
-        self.draw_minimap(screen)
-        self.draw_army_stats(screen)
