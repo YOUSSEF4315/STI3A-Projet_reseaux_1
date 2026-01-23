@@ -147,7 +147,16 @@ class DropdownMenu:
 class MainMenu:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # Fullscreen Desktop with Resizable option
+        # Fallback to standard FULLSCREEN if FULLSCREEN_DESKTOP (Pygame 2.0+) is missing
+        try:
+            flags = pygame.FULLSCREEN | pygame.RESIZABLE
+        except AttributeError:
+            flags = pygame.FULLSCREEN
+
+        # Use (0,0) to use current desktop resolution
+        self.screen = pygame.display.set_mode((0, 0), flags)
+        self.w, self.h = self.screen.get_size()
         pygame.display.set_caption("MedievAIl Battle - Menu Principal")
 
         self.clock = pygame.time.Clock()
@@ -160,17 +169,29 @@ class MainMenu:
         self.font_small = pygame.font.SysFont("Arial", 16)
         self.font_tiny = pygame.font.SysFont("Arial", 14)
 
-        # Boutons du menu principal
-        self.btn_play = Button(250, 200, 300, 60, "NOUVELLE BATAILLE", self.font_button)
-        self.btn_load = Button(250, 280, 300, 60, "CHARGER", self.font_button)
-        self.btn_options = Button(250, 360, 300, 60, "OPTIONS", self.font_button)
-        self.btn_quit = Button(250, 440, 300, 60, "QUITTER", self.font_button)
+        # Background
+        try:
+            bg_path = "assets/menu_background/backgroung.webp"
+            if os.path.exists(bg_path):
+                self.bg_raw = pygame.image.load(bg_path).convert()
+            else:
+                self.bg_raw = None
+        except Exception as e:
+            print(f"BG Load Error: {e}")
+            self.bg_raw = None
+        self.bg_scaled = None
+
+        # Boutons du menu principal (Positions will be set in recalc_layout)
+        self.btn_play = Button(0, 0, 300, 60, "NOUVELLE BATAILLE", self.font_button)
+        self.btn_load = Button(0, 0, 300, 60, "CHARGER", self.font_button)
+        self.btn_options = Button(0, 0, 300, 60, "OPTIONS", self.font_button)
+        self.btn_quit = Button(0, 0, 300, 60, "QUITTER", self.font_button)
 
         # Setup screen
-        self.setup_ai_a = DropdownMenu(200, 200, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=1)
-        self.setup_ai_b = DropdownMenu(200, 280, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=0)
-        self.setup_scenario = DropdownMenu(200, 360, 400, 40, list(AVAILABLE_SCENARIOS.keys()), self.font_small)
-        self.btn_start = Button(250, 480, 300, 50, "LANCER LA BATAILLE", self.font_button)
+        self.setup_ai_a = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=1)
+        self.setup_ai_b = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=0)
+        self.setup_scenario = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_SCENARIOS.keys()), self.font_small)
+        self.btn_start = Button(0, 0, 300, 50, "LANCER LA BATAILLE", self.font_button)
         self.btn_back = Button(20, 20, 100, 40, "< RETOUR", self.font_small)
 
         # Load screen
@@ -180,8 +201,54 @@ class MainMenu:
 
         # Options
         self.speed_options = ["Lent (10 FPS)", "Normal (30 FPS)", "Rapide (60 FPS)", "Très Rapide (120 FPS)"]
-        self.opt_speed = DropdownMenu(200, 200, 400, 40, self.speed_options, self.font_small, default=1)
+        self.opt_speed = DropdownMenu(0, 0, 400, 40, self.speed_options, self.font_small, default=1)
         self.opt_auto_play = True
+        
+        # Checkbox rect (placeholder, updated in recalc)
+        self.chk_rect = pygame.Rect(0, 0, 30, 30)
+
+        # Custom Pointer
+        try:
+             p_img = pygame.image.load("assets/Pointer/attack48x48 (Copy).webp").convert_alpha()
+             self.pointer_img = pygame.transform.scale(p_img, (32, 32))
+        except Exception as e:
+             print(f"Menu Pointer Error: {e}")
+             self.pointer_img = None
+        
+        pygame.mouse.set_visible(False)
+        
+        self.recalc_layout()
+
+    def recalc_layout(self):
+        """Recalcule les positions des éléments basé sur la taille de l'écran"""
+        self.w, self.h = self.screen.get_size()
+        cx, cy = self.w // 2, self.h // 2
+        
+        # Update Background
+        if self.bg_raw:
+            self.bg_scaled = pygame.transform.smoothscale(self.bg_raw, (self.w, self.h))
+
+        # Main Menu
+        start_y = cy - 100
+        gap = 80
+        self.btn_play.rect.center = (cx, start_y)
+        self.btn_load.rect.center = (cx, start_y + gap)
+        self.btn_options.rect.center = (cx, start_y + gap*2)
+        self.btn_quit.rect.center = (cx, start_y + gap*3)
+        
+        # Setup Screen
+        # Labels are hardcoded in draw(), need to adjust them too or just center everything relative to buttons
+        # For Dropdowns, we update their internal rects
+        self.setup_ai_a.rect.center = (cx, 200); self.setup_ai_a.rect.x = cx - 200 # Fixed width 400
+        self.setup_ai_b.rect.center = (cx, 280); self.setup_ai_b.rect.x = cx - 200
+        self.setup_scenario.rect.center = (cx, 360); self.setup_scenario.rect.x = cx - 200
+        
+        self.btn_start.rect.center = (cx, 480)
+        self.btn_back.rect.topleft = (20, 20)
+        
+        # Options
+        self.opt_speed.rect.center = (cx, 200); self.opt_speed.rect.x = cx - 200
+        self.chk_rect.topleft = (cx - 50, 280) # auto play checkbox
 
     def refresh_save_files(self):
         """Scan les fichiers .pkl dans le dossier"""
@@ -215,6 +282,14 @@ class MainMenu:
         return None
 
     def handle_events(self, event, mouse_pos):
+        if event.type == pygame.VIDEORESIZE:
+             # Use current flags or just RESIZABLE for windowed resize?
+             # If we are strictly full screen, resize event might not happen or might be resolution change.
+             # Let's simple reuse flags.
+             flags = pygame.FULLSCREEN | pygame.RESIZABLE
+             self.screen = pygame.display.set_mode((event.w, event.h), flags)
+             self.recalc_layout()
+
         if self.state == "main":
             self.btn_play.update(mouse_pos)
             self.btn_load.update(mouse_pos)
@@ -232,15 +307,12 @@ class MainMenu:
                 self.running = False
 
         elif self.state == "setup":
-            # 1. Gérer les dropdowns EN PREMIER (car ils sont au-dessus)
-            # Si un dropdown capture l'événement, on arrête là (pas de clic traversant)
             consumed = False
             if self.setup_ai_a.handle_event(event, mouse_pos): consumed = True
             elif self.setup_ai_b.handle_event(event, mouse_pos): consumed = True
             elif self.setup_scenario.handle_event(event, mouse_pos): consumed = True
             
             if not consumed:
-                # 2. Boutons seulement si pas de clic dropdown
                 self.btn_back.update(mouse_pos)
                 self.btn_start.update(mouse_pos)
 
@@ -255,9 +327,13 @@ class MainMenu:
             if self.btn_back.is_clicked(event):
                 self.state = "main"
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Clic sur un fichier de sauvegarde
+                cx = self.w // 2
                 for i, file in enumerate(self.save_files):
-                    rect = pygame.Rect(200, 150 + i * 50, 400, 45)
+                    # Dynamic rect for hit testing? Or stored?
+                    # Ideally stored, but here we can just rebuild it for click logic
+                    # Or better: use a centered rect logic.
+                    rect = pygame.Rect(0, 0, 400, 45)
+                    rect.center = (cx, 150 + i * 50)
                     if rect.collidepoint(mouse_pos) and file != "Aucune sauvegarde trouvée":
                         self.load_save(file)
 
@@ -270,13 +346,16 @@ class MainMenu:
             self.opt_speed.handle_event(event, mouse_pos)
 
             # Toggle auto-play
-            toggle_rect = pygame.Rect(200, 280, 30, 30)
+            # self.chk_rect updated in recalc
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if toggle_rect.collidepoint(mouse_pos):
+                if self.chk_rect.collidepoint(mouse_pos):
                     self.opt_auto_play = not self.opt_auto_play
 
     def draw(self):
-        self.screen.fill(BG_COLOR)
+        if self.bg_scaled:
+             self.screen.blit(self.bg_scaled, (0, 0))
+        else:
+             self.screen.fill(BG_COLOR)
 
         if self.state == "main":
             self.draw_main_menu()
@@ -286,15 +365,21 @@ class MainMenu:
             self.draw_load_screen()
         elif self.state == "options":
             self.draw_options_screen()
+            
+        # Draw Custom Pointer
+        if self.pointer_img:
+            mx, my = pygame.mouse.get_pos()
+            self.screen.blit(self.pointer_img, (mx, my))
 
     def draw_main_menu(self):
+        cx, cy = self.w // 2, self.h // 2
         # Titre
         title = self.font_title.render("MedievAIl BATTLE", True, ACCENT_COLOR)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
+        title_rect = title.get_rect(center=(cx, cy - 200))
         self.screen.blit(title, title_rect)
 
-        subtitle = self.font_small.render("Simulateur de Batailles Médiévales", True, TEXT_COLOR)
-        subtitle_rect = subtitle.get_rect(center=(SCREEN_WIDTH // 2, 150))
+        subtitle = self.font_small.render("Simulateur de Batailles Médiévales", True, (0, 0, 0))
+        subtitle_rect = subtitle.get_rect(center=(cx, cy - 150))
         self.screen.blit(subtitle, subtitle_rect)
 
         # Boutons
@@ -304,18 +389,19 @@ class MainMenu:
         self.btn_quit.draw(self.screen)
 
         # Footer
-        footer = self.font_tiny.render("Age of Empires-like | Python 3 | Pygame", True, (100, 100, 120))
-        footer_rect = footer.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 20))
+        footer = self.font_tiny.render(" Python 3 | Pygame", True, (100, 100, 120))
+        footer_rect = footer.get_rect(center=(cx, self.h - 20))
         self.screen.blit(footer, footer_rect)
 
     def draw_setup_screen(self):
+        cx, cy = self.w // 2, self.h // 2
         # Titre
         title = self.font_button.render("CONFIGURATION DE LA BATAILLE", True, ACCENT_COLOR)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 50))
+        title_rect = title.get_rect(center=(cx, 50))
         self.screen.blit(title, title_rect)
 
-        # Labels
-        y_offset = 120
+        # Labels - Align with the left edge of dropdowns (cx - 200)
+        left_align = cx - 200
         labels = [
             ("Équipe A (Bleu)", 200),
             ("Équipe B (Rouge)", 280),
@@ -324,21 +410,22 @@ class MainMenu:
 
         for label_text, y in labels:
             label = self.font_small.render(label_text, True, TEXT_COLOR)
-            self.screen.blit(label, (200, y - 25))
+            self.screen.blit(label, (left_align, y - 25))
 
         # Boutons (D'abord pour qu'ils soient couverts par les menus déroulants)
         self.btn_start.draw(self.screen)
         self.btn_back.draw(self.screen)
 
         # Descriptions IA (Dessinées avant les menus)
+        # Position relative to dropdowns
         desc_a = AI_DESCRIPTIONS.get(self.setup_ai_a.get_selected(), "")
         desc_b = AI_DESCRIPTIONS.get(self.setup_ai_b.get_selected(), "")
 
         desc_a_surf = self.font_tiny.render(desc_a, True, (180, 180, 200))
         desc_b_surf = self.font_tiny.render(desc_b, True, (180, 180, 200))
 
-        self.screen.blit(desc_a_surf, (210, 245))
-        self.screen.blit(desc_b_surf, (210, 325))
+        self.screen.blit(desc_a_surf, (left_align + 10, 245))
+        self.screen.blit(desc_b_surf, (left_align + 10, 325))
 
         # Dropdowns (Ordre inversé pour que celui du haut dessine PAR DESSUS celui du bas)
         self.setup_scenario.draw(self.screen)
@@ -346,14 +433,16 @@ class MainMenu:
         self.setup_ai_a.draw(self.screen)
 
     def draw_load_screen(self):
+        cx = self.w // 2
         # Titre
         title = self.font_button.render("CHARGER UNE PARTIE", True, ACCENT_COLOR)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 50))
+        title_rect = title.get_rect(center=(cx, 50))
         self.screen.blit(title, title_rect)
 
         # Liste des sauvegardes
         for i, file in enumerate(self.save_files):
-            rect = pygame.Rect(200, 150 + i * 50, 400, 45)
+            rect = pygame.Rect(0, 0, 400, 45)
+            rect.center = (cx, 150 + i * 50)
 
             if file == "Aucune sauvegarde trouvée":
                 color = (60, 60, 60)
@@ -378,30 +467,33 @@ class MainMenu:
 
         # Info
         info = self.font_tiny.render("Fichiers .pkl dans le dossier du projet", True, (120, 120, 140))
-        self.screen.blit(info, (200, SCREEN_HEIGHT - 40))
+        info_rect = info.get_rect(center=(cx, self.h - 40))
+        self.screen.blit(info, info_rect)
 
     def draw_options_screen(self):
+        cx = self.w // 2
+        left_align = cx - 200
         # Titre
         title = self.font_button.render("OPTIONS", True, ACCENT_COLOR)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 50))
+        title_rect = title.get_rect(center=(cx, 50))
         self.screen.blit(title, title_rect)
 
         # Vitesse de jeu
         label1 = self.font_small.render("Vitesse de simulation", True, TEXT_COLOR)
-        self.screen.blit(label1, (200, 175))
+        self.screen.blit(label1, (left_align, 175))
 
         # Auto-play
         label2 = self.font_small.render("Démarrer automatiquement", True, TEXT_COLOR)
-        self.screen.blit(label2, (250, 285))
+        self.screen.blit(label2, (left_align + 50, 285))
 
-        # Checkbox
-        checkbox_rect = pygame.Rect(200, 280, 30, 30)
-        pygame.draw.rect(self.screen, BUTTON_COLOR, checkbox_rect, border_radius=4)
-        pygame.draw.rect(self.screen, TEXT_COLOR, checkbox_rect, 2, border_radius=4)
+        # Checkbox (Use self.chk_rect which is updated in recalc)
+        pygame.draw.rect(self.screen, BUTTON_COLOR, self.chk_rect, border_radius=4)
+        pygame.draw.rect(self.screen, TEXT_COLOR, self.chk_rect, 2, border_radius=4)
 
         if self.opt_auto_play:
             check_surf = self.font_button.render("✓", True, ACCENT_COLOR)
-            self.screen.blit(check_surf, (205, 280))
+            check_rect = check_surf.get_rect(center=self.chk_rect.center)
+            self.screen.blit(check_surf, check_rect)
 
         # Dropdown (Dessiné EN DERNIER pour passer au dessus)
         self.opt_speed.draw(self.screen)
@@ -432,14 +524,13 @@ class MainMenu:
             "B": ai_b_class("B"),
         }
 
-        # Fermer le menu
-        pygame.quit()
-
-        # Lancer la bataille
+        # NE PAS FERMER LE MENU (pygame.quit)
+        # On lance la bataille dans la même fenêtre
         self.start_battle_window(game)
-
-        # Quitter après la bataille
-        self.running = False
+        
+        # Au retour, on recalcule le layout au cas où la résolution ait changé dans la bataille (si redimensionné)
+        self.recalc_layout()
+        # On ne met PAS self.running = False, ainsi on revient au menu après la bataille
 
     def load_save(self, filename):
         """Charge une sauvegarde"""
@@ -451,28 +542,26 @@ class MainMenu:
             print(f"   Temps simulé : {game.time:.1f}s")
             print(f"   Unités en vie : {len(game.alive_units())}\n")
 
-            # Fermer le menu
-            pygame.quit()
-
-            # Lancer la bataille
+            # Lance dans la même fenêtre
             self.start_battle_window(game)
-
-            # Quitter après la bataille
-            self.running = False
+            self.recalc_layout()
 
         except Exception as e:
             print(f"❌ Erreur de chargement : {e}")
 
     def start_battle_window(self, game):
-        """Lance la fenêtre de bataille"""
-        pygame.init()
-        screen = pygame.display.set_mode((1024, 768), pygame.RESIZABLE)
-        pygame.display.set_caption("MedievAIl Battle - En cours")
-        clock = pygame.time.Clock()
-
-        gui = GUI(game, 1024, 768)
+        """Lance la boucle de jeu de la bataille sur l'écran actuel"""
+        # On réutilise self.screen
+        w, h = self.screen.get_size()
+        
+        gui = GUI(game, w, h)
+        
+        # Force re-hide cursor (just in case)
+        pygame.mouse.set_visible(False)
+        
         auto_play = self.opt_auto_play
-        running = True
+        battle_running = True
+        clock = pygame.time.Clock()
 
         print("\n--- CONTRÔLES ---")
         print("[P]               : Lecture / Pause")
@@ -484,11 +573,21 @@ class MainMenu:
         print("[ESC]             : Retour menu")
         print("-----------------\n")
 
-        while running:
+        while battle_running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
-
+                    # Si on ferme la croix, on veut quitter tout le jeu
+                    battle_running = False
+                    self.running = False # Arrêter aussi le menu
+                
+                elif event.type == pygame.VIDEORESIZE:
+                    # Update screen if resized
+                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.FULLSCREEN | pygame.RESIZABLE)
+                    w, h = event.w, event.h
+                    # Notifier la GUI du resize (elle a déjà une méthode handle_events pour ça ?)
+                    # Views.py toggle resize manually inside handle_events usually.
+                    # Start_battle_window reuses the same event loop style.
+                
                 gui.handle_events(event)
 
                 if event.type == pygame.KEYDOWN:
@@ -497,13 +596,16 @@ class MainMenu:
                     elif event.key == pygame.K_SPACE:
                         game.step(dt=0.1)
                     elif event.key == pygame.K_ESCAPE:
-                        running = False
+                        battle_running = False # Retour au menu
 
             if not game.is_finished() and auto_play:
                 game.step(dt=0.1)
 
+            # Update GUI dimensions just in case
+            gui.screen_w, gui.screen_h = self.screen.get_size()
+            
             gui.handle_input()
-            gui.draw(screen)
+            gui.draw(self.screen)
 
             # Overlay de fin
             if game.is_finished():
@@ -517,25 +619,27 @@ class MainMenu:
                     text = f"VICTOIRE ÉQUIPE {winner}"
                     color = (255, 215, 0)
 
+                cx, cy = self.screen.get_size()
                 surf = font.render(text, True, color)
-                rect = surf.get_rect(center=(gui.screen_w // 2, 100))
+                rect = surf.get_rect(center=(cx // 2, 100))
 
                 bg = pygame.Surface((rect.width + 30, rect.height + 20))
                 bg.set_alpha(200)
                 bg.fill((0, 0, 0))
-                screen.blit(bg, bg.get_rect(center=rect.center))
-                screen.blit(surf, rect)
+                self.screen.blit(bg, bg.get_rect(center=rect.center))
+                self.screen.blit(surf, rect)
 
                 # Instruction
                 hint_font = pygame.font.SysFont("Arial", 18)
                 hint = hint_font.render("Appuyez sur [ESC] pour retourner au menu", True, (200, 200, 200))
-                hint_rect = hint.get_rect(center=(gui.screen_w // 2, 150))
-                screen.blit(hint, hint_rect)
+                hint_rect = hint.get_rect(center=(cx // 2, 150))
+                self.screen.blit(hint, hint_rect)
 
             pygame.display.flip()
             clock.tick(60)
 
-        pygame.quit()
+         # Fin de battle_window, on retourne au menu (qui est dans la boucle run)
+        print("Retour au menu...")
 
 
 def main():

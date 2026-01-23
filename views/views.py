@@ -184,6 +184,25 @@ class GUI:
             # Helper to generate an icon from animation if static not found
             pass
 
+        # 4. Load GUI Custom Assets
+        try:
+            # Load Pointer
+            p_img = pygame.image.load("assets/Pointer/attack48x48 (Copy).webp").convert_alpha()
+            self.pointer_img = pygame.transform.scale(p_img, (32, 32)) # Resize if needed, or keep original
+            
+            # Load Minimap Panel
+            pan_img = pygame.image.load("assets/minimapPan/map-panel.webp").convert_alpha()
+            # Scaling panel to fit or surround the minimap area?
+            # Minimap is MINIMAP_WIDTH wide. Let's see original size or just load it.
+            self.minimap_panel_img = pan_img
+        except Exception as e:
+            print(f"Error loading GUI assets: {e}")
+            self.pointer_img = None
+            self.minimap_panel_img = None
+
+        # Hide system cursor
+        pygame.mouse.set_visible(False)
+
     def get_scaled_tile_size(self):
         return TILE_WIDTH * self.zoom, TILE_HEIGHT * self.zoom
 
@@ -269,6 +288,23 @@ class GUI:
 
         if self.show_minimap and self.show_ui_master and pygame.mouse.get_pressed()[0] and not self.is_dragging:
             self._handle_minimap_click()
+
+        # --- CALIBRATION CONTROLS (TEMP) ---
+        # T/G = Up/Down, F/H = Left/Right
+        if not hasattr(self, 'panel_offset_x'): self.panel_offset_x = -35
+        if not hasattr(self, 'panel_offset_y'): self.panel_offset_y = -12
+        
+        # Debounce slightly or just run fast? Run fast creates smoothness but prints a lot.
+        # Let's use a small counter or just print every 10 frames if changed?
+        # Simpler: just check pressed.
+        changed = False
+        if keys[pygame.K_t]: self.panel_offset_y -= 1; changed = True
+        if keys[pygame.K_g]: self.panel_offset_y += 1; changed = True
+        if keys[pygame.K_f]: self.panel_offset_x -= 1; changed = True
+        if keys[pygame.K_h]: self.panel_offset_x += 1; changed = True
+        
+        if changed:
+            print(f"CALIBRATION: X={self.panel_offset_x}, Y={self.panel_offset_y}")
 
     # --- HELPERS ANIMATION (NOUVEAU) ---
     def _update_unit_state(self, unit):
@@ -517,6 +553,13 @@ class GUI:
         self.draw_minimap(screen)
         self.draw_army_stats(screen)
 
+        # Draw Custom Pointer
+        if self.pointer_img:
+            mx, my = pygame.mouse.get_pos()
+            screen.blit(self.pointer_img, (mx, my))
+
+
+    # ... Helper drawing methods ...
     # ... Helper drawing methods ...
     def draw_minimap(self, screen):
         if not self.show_minimap or not self.map or not self.show_ui_master: return
@@ -537,8 +580,43 @@ class GUI:
             my = rect_y + wy * scale
             return mx, my
 
-        pygame.draw.rect(screen, COLOR_MINIMAP_BG, (rect_x, rect_y, MINIMAP_WIDTH, mini_height))
-        pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), MINIMAP_BORDER)
+        # Draw Panel Background (BEHIND the map)
+        if self.minimap_panel_img:
+             # Scale panel to be slightly larger than minimap to frame it
+             margin_w = 50 # Reduced width
+             margin_h = 20 # Reduced height
+             
+             panel_w = MINIMAP_WIDTH + margin_w
+             panel_h = int(mini_height) + margin_h
+             
+             scaled_panel = pygame.transform.scale(self.minimap_panel_img, (panel_w, panel_h))
+             
+             # Align centers
+             minimap_rect = pygame.Rect(rect_x, rect_y, MINIMAP_WIDTH, mini_height)
+             panel_rect = scaled_panel.get_rect(center=minimap_rect.center)
+             
+             
+             # MANUAL CORRECTION: Shift Left and Up (Calibration Mode)
+             # Use self.panel_offset_x/y if they exist, else default
+             off_x = getattr(self, 'panel_offset_x', -5) # Reduced left offset (Shifted right)
+             off_y = getattr(self, 'panel_offset_y', -12)
+             
+             panel_rect.x += off_x
+             panel_rect.y += off_y
+             
+             screen.blit(scaled_panel, panel_rect)
+             
+             # DEBUG: Draw red border around content and blue around panel to help alignment
+             # pygame.draw.rect(screen, (255, 0, 0), minimap_rect, 1) # Content
+             # pygame.draw.rect(screen, (0, 0, 255), panel_rect, 1)   # Panel Image
+
+        # Draw Minimap Background Area (Strictly for the map content)
+        # This draws ON TOP of the panel center, ensuring map is visible
+        # REMOVED FOR CALIBRATION per User Request
+        # pygame.draw.rect(screen, COLOR_MINIMAP_BG, (rect_x, rect_y, MINIMAP_WIDTH, mini_height))
+        # Optional: Border around the map content itself?
+        # pygame.draw.rect(screen, (255, 255, 255), (rect_x, rect_y, MINIMAP_WIDTH, mini_height), 1)
+
         p1 = to_mini(0, 0); p2 = to_mini(0, max_cols); p3 = to_mini(max_rows, max_cols); p4 = to_mini(max_rows, 0)
         pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4])
         pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1)
@@ -558,6 +636,8 @@ class GUI:
         mini_cam_w = view_w_world * scale
         mini_cam_h = view_h_world * scale
         pygame.draw.rect(screen, COLOR_VIEWPORT, (mini_cam_x, mini_cam_y, mini_cam_w, mini_cam_h), 1)
+
+
 
     def draw_army_stats(self, screen):
         if not self.show_ui_master: return
