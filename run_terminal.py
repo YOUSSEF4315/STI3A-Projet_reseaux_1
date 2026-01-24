@@ -1,8 +1,8 @@
-from views.terminal_view import TerminalView
+from view.terminal_view import TerminalView
 
-from scenarios import scenario_lanchester
+from model.scenarios import scenario_lanchester
 
-if __name__ == "__main__":
+def main():
     # 1. Créer le jeu
     game = scenario_lanchester("knight",50)
     
@@ -11,3 +11,6 @@ if __name__ == "__main__":
     
     # 3. Lancer !
     view.start()
+
+if __name__ == "__main__":
+    main()

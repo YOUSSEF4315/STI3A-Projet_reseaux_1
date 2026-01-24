@@ -3,9 +3,9 @@
 import os
 import time
 
-from game import Game
-from scenarios import scenario_simple_vs_braindead  # on importe notre scénario
-from smartAI import GeneralStrategus
+from model.game import Game
+from model.scenarios import scenario_simple_vs_braindead  # on importe notre scénario
+from presenter.smartAI import GeneralStrategus
 
 
 TEAM_INFO = {

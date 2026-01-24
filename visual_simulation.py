@@ -2,8 +2,8 @@ import pygame
 import sys
 
 # --- IMPORTS ---
-from scenarios import scenario_simple_vs_braindead
-from views.views import GUI
+from model.scenarios import scenario_simple_vs_braindead
+from view.views import GUI
 
 # --- TEAM INFO ---
 TEAM_INFO = {
@@ -75,7 +75,7 @@ def main():
                 if event.key == pygame.K_F9:
                     print("Basculement vers la vue Terminal...")
                     pygame.quit()
-                    from views.terminal_view import TerminalView
+                    from view.terminal_view import TerminalView
                     view = TerminalView(game)
                     view.start()
                     sys.exit()
