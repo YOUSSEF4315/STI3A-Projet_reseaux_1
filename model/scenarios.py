@@ -7,8 +7,9 @@ from .terrain import (
     terrain_colline_centrale,
     terrain_deux_camps,
     terrain_siege_chateau,
-    terrain_vallee_centrale
+    terrain_vallee_centrale,
 )
+from .wonder import Wonder
 
 def scenario_simple_vs_braindead(controllers=None) -> Game:
     # 1. LA TAILLE LÉGALE (120x120)
@@ -437,4 +438,85 @@ def scenario_siege_chateau(controllers=None) -> Game:
     print(f"[SIEGE] Siege : {len(game.units)} unites - Les defenseurs tiendront-ils le chateau ?")
     print(f"   Defenseurs (A): Position elevee (+25% degats)")
     print(f"   Attaquants (B): Superiorite numerique mais desavantage terrain (-25%)")
+    return game
+
+
+
+def scenario_wonder_duel(terrain_func=None):
+    """
+    Scenario: Wonder Fight (Mise a jour).
+    Chaque camp a un Wonder a proteger derriere ses lignes.
+    Disposition inspirée du scenario standard (120x120).
+    """
+    if terrain_func is None:
+        from .terrain import terrain_plat as terrain_flat
+        terrain_func = terrain_flat
+        
+    rows, cols = 120, 120
+    battle_map = BattleMap(rows=rows, cols=cols, elevation_map=terrain_func)
+    
+    controllers = {"A": None, "B": None}
+    game = Game(battle_map, controllers)
+    
+    center_r = rows // 2
+    center_c = cols // 2
+    
+    # --- WONDERS (Rotation 90 degres sens horaire) ---
+    # Wonder A : (5, 60) -> (60, 5)
+    w_a = Wonder(x=60, y=5, team="A")
+    game.add_unit(w_a, "A", 5, 60) # Note: add_unit takes row, col? No map takes row, col. 
+    # game.add_unit uses (unit, team, row, col). The unit stores float x,y independent of map grid?
+    # Actually unit.x, unit.y are used for display. map cells for logic. we should align them.
+    # If unit.x=60, unit.y=5. Then row=5? col=60? or row=60, col=5? 
+    # In my logic Knight(x=c, y=r) -> col=c, row=r. 
+    # So here x=60 (col), y=5 (row).
+    game.add_unit(w_a, "A", 5, 60) # row=5, col=60.
+    
+    # Wonder B : (115, 60) -> (60, 115)
+    w_b = Wonder(x=60, y=115, team="B")
+    game.add_unit(w_b, "B", 115, 60) # row=115, col=60.
+    
+    # ---------------------------------------------------------
+    # ARMÉE A (Bleus) - Gauche (Devant le Wonder)
+    # ---------------------------------------------------------
+    base_col_A = 30 # Avancé par rapport au Wonder (qui est a 5)
+    
+    # MUR DE PIQUIERS
+    for c in range(base_col_A + 4, base_col_A + 7): 
+        for r in range(center_r - 20, center_r + 20, 2): 
+            game.add_unit(Pikeman(x=float(c), y=float(r)), "A", r, c)
+
+    # CHEVALIERS
+    for c in range(base_col_A, base_col_A + 3, 2):
+        for r in range(center_r - 10, center_r + 10, 2):
+            game.add_unit(Knight(x=float(c), y=float(r)), "A", r, c)
+
+    # ARBALÉTRIERS
+    for r in range(center_r - 25, center_r + 25, 2):
+        # Un peu plus dispersés
+        cx = base_col_A - 4
+        game.add_unit(Crossbowman(x=float(cx), y=float(r)), "A", r, cx)
+
+
+    # ---------------------------------------------------------
+    # ARMÉE B (Rouges) - Droite (Devant le Wonder)
+    # ---------------------------------------------------------
+    base_col_B = cols - 30 
+    
+    # MUR DE PIQUIERS
+    for c in range(base_col_B - 7, base_col_B - 4):
+        for r in range(center_r - 20, center_r + 20, 2):
+            game.add_unit(Pikeman(x=float(c), y=float(r)), "B", r, c)
+
+    # CHEVALIERS
+    for c in range(base_col_B - 3, base_col_B, 2):
+        for r in range(center_r - 10, center_r + 10, 2):
+            game.add_unit(Knight(x=float(c), y=float(r)), "B", r, c)
+
+    # ARBALÉTRIERS
+    for r in range(center_r - 25, center_r + 25, 2):
+        cx = base_col_B + 4
+        game.add_unit(Crossbowman(x=float(cx), y=float(r)), "B", r, cx)
+        
+    print(f"[WONDER] Duel Standard+Wonder : {len(game.units)} unites.")
     return game

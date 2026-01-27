@@ -65,6 +65,30 @@ class AnimationManager:
             print(f"Error loading sprite {path}: {e}")
             return False
 
+    def load_static_sprite(self, unit_name, action, path, target_size=(100, 100)):
+        """Charge une image unique comme une animation statique (1 frame, toutes directions)"""
+        if not os.path.exists(path):
+            print(f"Warning: Sprite {path} not found.")
+            return False
+            
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            scaled = pygame.transform.smoothscale(img, target_size)
+            
+            if unit_name not in self.animations: self.animations[unit_name] = {}
+            if action not in self.animations[unit_name]: self.animations[unit_name][action] = {}
+            
+            # Map all 16 directions to this single frame
+            frame_list = [scaled]
+            for r in range(16):
+                self.animations[unit_name][action][r] = frame_list
+                
+            print(f"Loaded static sprite: {unit_name} / {action}")
+            return True
+        except Exception as e:
+            print(f"Error loading static sprite {path}: {e}")
+            return False
+
     def get_frame(self, unit_name, action, direction, frame_idx):
         """
         Retrieves the specific frame.
@@ -223,10 +247,17 @@ class GUI:
                 self.anim_mgr.load_spritesheet(code_name, action, path, rows=16, cols=30, target_size=(160, 160))
                 
         # 3. Load Icons for UI (Static Fallbacks)
-        for code_name, folder_name in units_to_load:
-            # Use 'idle' first frame or static image if exists
-            # Helper to generate an icon from animation if static not found
-            pass
+        # (Pass)
+
+        # 3b. Load STATIC Units (Wonder) outside the loop
+        # Wonder is big (5x5 tiles -> approx 320x320 px or more)
+        # Original sprite is 82KB, size unknown, assume we want it big.
+        wp = "assets/wonder.png"
+        # Reduced from 256 to 192 to better fit visual expectations
+        self.anim_mgr.load_static_sprite("wonder", "idle", wp, target_size=(192, 192))
+        # Add fallback for 'walk' etc so it doesn't crash or disappear
+        self.anim_mgr.load_static_sprite("wonder", "walk", wp, target_size=(192, 192))
+        self.anim_mgr.load_static_sprite("wonder", "death", wp, target_size=(192, 192))
 
         # 4. Load GUI Custom Assets
         try:
@@ -555,7 +586,34 @@ class GUI:
                         if tile_surf:
                             if self.zoom != 1.0:
                                 tile_surf = pygame.transform.scale(tile_surf, (int(tw), int(th)))
-                            screen.blit(tile_surf, (final_x, final_y))
+                            
+                            # === EFFET VISUEL D'ÉLÉVATION ===
+                            # 1. Décalage vertical pour effet 3D
+                            elevation_tile_offset = 0
+                            if elev > 0:
+                                elevation_tile_offset = -6 * self.zoom  # Tuile élevée : monte vers le haut
+                            elif elev < 0:
+                                elevation_tile_offset = 4 * self.zoom   # Tuile basse : descend
+                            
+                            # 2. Teinte de couleur selon élévation (TRÈS SUBTILE)
+                            if elev != 0:
+                                # Créer une copie pour appliquer la teinte
+                                tinted_tile = tile_surf.copy()
+                                
+                                if elev > 0:
+                                    # Zone élevée : légère teinte dorée/chaude
+                                    tint_overlay = pygame.Surface(tinted_tile.get_size(), pygame.SRCALPHA)
+                                    tint_overlay.fill((40, 30, 10, 12))  # Très subtil doré
+                                    tinted_tile.blit(tint_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+                                else:
+                                    # Zone basse : très légère teinte bleutée/froide
+                                    tint_overlay = pygame.Surface(tinted_tile.get_size(), pygame.SRCALPHA)
+                                    tint_overlay.fill((0, 0, 0, 15))  # Léger assombrissement
+                                    tinted_tile.blit(tint_overlay, (0, 0))
+                                
+                                screen.blit(tinted_tile, (final_x, final_y + elevation_tile_offset))
+                            else:
+                                screen.blit(tile_surf, (final_x, final_y))
 
         # Draw ALL Units (Alive + Dead animating)
         # Note: game.alive_units() only gives living. We need self.game.units
@@ -602,8 +660,16 @@ class GUI:
                     if is_alive:
                         # Shadow & Team Circle only for living
                         team = getattr(unit, 'team', '?')
-                        ellipse_w = int(30 * self.zoom)
-                        ellipse_h = int(15 * self.zoom)
+                        
+                        # Scale shadow by unit radius (Default 0.5 for normal units)
+                        u_radius = getattr(unit, 'radius', 0.5)
+                        # Base size 30px for radius 0.5 -> linear scaling
+                        # width = 30 * (radius / 0.5)
+                        base_w = 30 * (u_radius / 0.5)
+                        base_h = 15 * (u_radius / 0.5)
+                        
+                        ellipse_w = int(base_w * self.zoom)
+                        ellipse_h = int(base_h * self.zoom)
                         
                         shadow_surf = pygame.Surface((ellipse_w, ellipse_h), pygame.SRCALPHA)
                         pygame.draw.ellipse(shadow_surf, (0, 0, 0, 100), (0, 0, ellipse_w, ellipse_h))

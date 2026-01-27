@@ -8,6 +8,7 @@ from .guerrier import Guerrier
 from .knight import Knight
 from .pikeman import Pikeman
 from .crossbowman import Crossbowman
+from .wonder import Wonder
 from .map import BattleMap
 from .terrain import (
     terrain_colline_centrale,

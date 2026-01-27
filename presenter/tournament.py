@@ -19,7 +19,7 @@ AVAILABLE_GENERALS = {
     "Daft": MajorDaft,
     "GeneralStrategus": GeneralStrategus,
     "AssasinJack": AssasinJack,
-    #"PredictEinstein": PredictEinstein,
+    "PredictEinstein": PredictEinstein,
 }
 
 AVAILABLE_SCENARIOS = {
@@ -56,12 +56,12 @@ class Tournament:
         self.results = {} 
 
     def run(self):
-        print(f"🏆 Lancement du tournoi : {len(self.generals)} Généraux, {len(self.scenarios)} Scénarios.")
+        print(f"[TOURNEY] Lancement du tournoi : {len(self.generals)} Generaux, {len(self.scenarios)} Scenarios.")
         
         start_time = time.time()
 
         for sc_name in self.scenarios:
-            print(f"\n--- ⚔️ Scénario : {sc_name} ---")
+            print(f"\n--- [SCENARIO] {sc_name} ---")
             sc_func = AVAILABLE_SCENARIOS[sc_name]
             self.results[sc_name] = {}
 

@@ -17,7 +17,10 @@ from model.scenarios import (
     scenario_bataille_colline,
     scenario_deux_camps_eleves,
     scenario_siege_chateau,
+    scenario_wonder_duel,
 )
+from model.army_compositions import ARMY_COMPOSITIONS, COMPOSITION_DESCRIPTIONS
+from model.terrain import TERRAIN_TYPES
 from presenter.ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
 from presenter.smartAI import GeneralStrategus
 from .views import GUI
@@ -48,6 +51,7 @@ AVAILABLE_SCENARIOS = {
     "Bataille Colline": scenario_bataille_colline,
     "Deux Camps Eleves": scenario_deux_camps_eleves,
     "Siege du Chateau": scenario_siege_chateau,
+    "Duel de Merveilles": scenario_wonder_duel,
 }
 
 AI_DESCRIPTIONS = {
@@ -102,8 +106,8 @@ class DropdownMenu:
         pygame.draw.rect(screen, TEXT_COLOR, self.rect, 2, border_radius=5)
 
         text = self.get_selected()
-        if len(text) > 25:
-            text = text[:22] + "..."
+        if len(text) > 45:
+            text = text[:42] + "..."
         text_surf = self.font.render(text, True, TEXT_COLOR)
         text_rect = text_surf.get_rect(midleft=(self.rect.x + 10, self.rect.centery))
         screen.blit(text_surf, text_rect)
@@ -131,8 +135,8 @@ class DropdownMenu:
                 pygame.draw.rect(screen, TEXT_COLOR, opt_rect, 1)
 
                 opt_text = option
-                if len(opt_text) > 25:
-                    opt_text = opt_text[:22] + "..."
+                if len(opt_text) > 45:
+                    opt_text = opt_text[:42] + "..."
                 opt_surf = self.font.render(opt_text, True, TEXT_COLOR)
                 opt_text_rect = opt_surf.get_rect(midleft=(opt_rect.x + 10, opt_rect.centery))
                 screen.blit(opt_surf, opt_text_rect)
@@ -155,17 +159,27 @@ class DropdownMenu:
 
 
 class MainMenu:
-    def __init__(self):
+    def __init__(self, windowed=False):
         pygame.init()
         # Fullscreen Desktop with Resizable option
         # Fallback to standard FULLSCREEN if FULLSCREEN_DESKTOP (Pygame 2.0+) is missing
         try:
-            flags = pygame.FULLSCREEN | pygame.RESIZABLE
+            full_flags = pygame.FULLSCREEN | pygame.RESIZABLE
         except AttributeError:
-            flags = pygame.FULLSCREEN
+            full_flags = pygame.FULLSCREEN
 
-        # Use (0,0) to use current desktop resolution
-        self.screen = pygame.display.set_mode((0, 0), flags)
+        self.windowed = windowed
+        print(f"[DEBUG] MainMenu init. Windowed={self.windowed}")
+        
+        if self.windowed:
+            # Force standard window without flags first to be safe
+            self.screen = pygame.display.set_mode((1024, 768), pygame.RESIZABLE)
+            print(f"[DEBUG] Window mode set: {self.screen.get_size()}")
+        else:
+            # Use (0,0) to use current desktop resolution
+            self.screen = pygame.display.set_mode((0, 0), full_flags)
+            print(f"[DEBUG] Fullscreen mode set: {self.screen.get_size()}")
+            
         self.w, self.h = self.screen.get_size()
         pygame.display.set_caption("MedievAIl Battle - Menu Principal")
 
@@ -200,7 +214,23 @@ class MainMenu:
         # Setup screen
         self.setup_ai_a = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=1)
         self.setup_ai_b = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_AIS.keys()), self.font_small, default=0)
-        self.setup_scenario = DropdownMenu(0, 0, 400, 40, list(AVAILABLE_SCENARIOS.keys()), self.font_small)
+        self.setup_composition = DropdownMenu(0, 0, 400, 40, list(ARMY_COMPOSITIONS.keys()), self.font_small, default=0)
+
+        # Terrains avec noms plus lisibles
+        terrain_names = [
+            "Plat (aucun bonus)",
+            "Colline Centrale (King of the Hill)",
+            "Deux Camps (Collines symétriques)",
+            "Siège (Château central)",
+            "Vallée Centrale (Bordures élevées)",
+            "Diagonale (Terrain incliné)",
+            "Crête Horizontale",
+            "Aléatoire (Collines dispersées)",
+            "Duel de Merveilles"
+        ]
+        self.terrain_keys = ["flat", "colline", "deux_camps", "siege", "vallee", "diagonal", "crete", "random", "wonder_duel"]
+        self.setup_terrain = DropdownMenu(0, 0, 400, 40, terrain_names, self.font_small, default=0)
+
         self.btn_start = Button(0, 0, 300, 50, "LANCER LA BATAILLE", self.font_button)
         self.btn_back = Button(20, 20, 100, 40, "< RETOUR", self.font_small)
 
@@ -249,11 +279,12 @@ class MainMenu:
         # Setup Screen
         # Labels are hardcoded in draw(), need to adjust them too or just center everything relative to buttons
         # For Dropdowns, we update their internal rects
-        self.setup_ai_a.rect.center = (cx, 200); self.setup_ai_a.rect.x = cx - 200 # Fixed width 400
-        self.setup_ai_b.rect.center = (cx, 280); self.setup_ai_b.rect.x = cx - 200
-        self.setup_scenario.rect.center = (cx, 360); self.setup_scenario.rect.x = cx - 200
-        
-        self.btn_start.rect.center = (cx, 480)
+        self.setup_ai_a.rect.center = (cx, 160); self.setup_ai_a.rect.x = cx - 200 # Fixed width 400
+        self.setup_ai_b.rect.center = (cx, 240); self.setup_ai_b.rect.x = cx - 200
+        self.setup_composition.rect.center = (cx, 330); self.setup_composition.rect.x = cx - 200
+        self.setup_terrain.rect.center = (cx, 410); self.setup_terrain.rect.x = cx - 200
+
+        self.btn_start.rect.center = (cx, 500)
         self.btn_back.rect.topleft = (20, 20)
         
         # Options
@@ -293,10 +324,10 @@ class MainMenu:
 
     def handle_events(self, event, mouse_pos):
         if event.type == pygame.VIDEORESIZE:
-             # Use current flags or just RESIZABLE for windowed resize?
-             # If we are strictly full screen, resize event might not happen or might be resolution change.
-             # Let's simple reuse flags.
-             flags = pygame.FULLSCREEN | pygame.RESIZABLE
+             flags = pygame.RESIZABLE
+             if not self.windowed:
+                 flags = pygame.FULLSCREEN | pygame.RESIZABLE
+             
              self.screen = pygame.display.set_mode((event.w, event.h), flags)
              self.recalc_layout()
 
@@ -320,8 +351,9 @@ class MainMenu:
             consumed = False
             if self.setup_ai_a.handle_event(event, mouse_pos): consumed = True
             elif self.setup_ai_b.handle_event(event, mouse_pos): consumed = True
-            elif self.setup_scenario.handle_event(event, mouse_pos): consumed = True
-            
+            elif self.setup_composition.handle_event(event, mouse_pos): consumed = True
+            elif self.setup_terrain.handle_event(event, mouse_pos): consumed = True
+
             if not consumed:
                 self.btn_back.update(mouse_pos)
                 self.btn_start.update(mouse_pos)
@@ -413,9 +445,10 @@ class MainMenu:
         # Labels - Align with the left edge of dropdowns (cx - 200)
         left_align = cx - 200
         labels = [
-            ("Équipe A (Bleu)", 200),
-            ("Équipe B (Rouge)", 280),
-            ("Scénario", 360)
+            ("Équipe A (Bleu)", 160),
+            ("Équipe B (Rouge)", 240),
+            ("Composition d'Armée", 330),
+            ("Terrain de Bataille", 410)
         ]
 
         for label_text, y in labels:
@@ -427,18 +460,23 @@ class MainMenu:
         self.btn_back.draw(self.screen)
 
         # Descriptions IA (Dessinées avant les menus)
-        # Position relative to dropdowns
         desc_a = AI_DESCRIPTIONS.get(self.setup_ai_a.get_selected(), "")
         desc_b = AI_DESCRIPTIONS.get(self.setup_ai_b.get_selected(), "")
 
         desc_a_surf = self.font_tiny.render(desc_a, True, (180, 180, 200))
         desc_b_surf = self.font_tiny.render(desc_b, True, (180, 180, 200))
 
-        self.screen.blit(desc_a_surf, (left_align + 10, 245))
-        self.screen.blit(desc_b_surf, (left_align + 10, 325))
+        self.screen.blit(desc_a_surf, (left_align + 10, 185))
+        self.screen.blit(desc_b_surf, (left_align + 10, 265))
+
+        # Description composition
+        comp_desc = COMPOSITION_DESCRIPTIONS.get(self.setup_composition.get_selected(), "")
+        comp_desc_surf = self.font_tiny.render(comp_desc, True, (180, 180, 200))
+        self.screen.blit(comp_desc_surf, (left_align + 10, 355))
 
         # Dropdowns (Ordre inversé pour que celui du haut dessine PAR DESSUS celui du bas)
-        self.setup_scenario.draw(self.screen)
+        self.setup_terrain.draw(self.screen)
+        self.setup_composition.draw(self.screen)
         self.setup_ai_b.draw(self.screen)
         self.setup_ai_a.draw(self.screen)
 
@@ -515,9 +553,14 @@ class MainMenu:
         """Lance la bataille avec les paramètres choisis"""
         ai_a_name = self.setup_ai_a.get_selected()
         ai_b_name = self.setup_ai_b.get_selected()
-        scenario_name = self.setup_scenario.get_selected()
+        composition_name = self.setup_composition.get_selected()
+        terrain_index = self.setup_terrain.selected_index
+        terrain_key = self.terrain_keys[terrain_index]
+        terrain_display_name = self.setup_terrain.get_selected()
 
-        print(f"\n🎮 Lancement de la bataille : {scenario_name}")
+        print(f"\n🎮 Lancement de la bataille")
+        print(f"   Composition : {composition_name}")
+        print(f"   Terrain : {terrain_display_name}")
         print(f"   Équipe A : {ai_a_name}")
         print(f"   Équipe B : {ai_b_name}\n")
 
@@ -526,7 +569,7 @@ class MainMenu:
         self.screen.fill(BG_COLOR)
         if self.bg_scaled:
              self.screen.blit(self.bg_scaled, (0, 0))
-        
+
         # Overlay sombre
         overlay = pygame.Surface((self.w, self.h))
         overlay.set_alpha(180)
@@ -545,11 +588,18 @@ class MainMenu:
         pygame.display.flip()
         # ---------------------------
 
-        # Créer le jeu
-        scenario_func = AVAILABLE_SCENARIOS[scenario_name]
-        game = scenario_func()
+        if terrain_key == "wonder_duel":
+            # Le scénario Wonder Duel définit sa propre composition et placement
+            game = scenario_wonder_duel()
+        else:
+            # Créer le jeu en combinant composition + terrain standard
+            composition_func = ARMY_COMPOSITIONS[composition_name]
+            terrain_func = TERRAIN_TYPES[terrain_key]
 
-        # Remplacer les contrôleurs
+            # La fonction de composition prend le terrain en paramètre
+            game = composition_func(terrain_func)
+
+        # Ajouter les contrôleurs
         ai_a_class = AVAILABLE_AIS[ai_a_name]
         ai_b_class = AVAILABLE_AIS[ai_b_name]
 
@@ -561,7 +611,7 @@ class MainMenu:
         # NE PAS FERMER LE MENU (pygame.quit)
         # On lance la bataille dans la même fenêtre
         self.start_battle_window(game)
-        
+
         # Au retour, on recalcule le layout au cas où la résolution ait changé dans la bataille (si redimensionné)
         self.recalc_layout()
         # On ne met PAS self.running = False, ainsi on revient au menu après la bataille
@@ -624,7 +674,10 @@ class MainMenu:
                 
                 elif event.type == pygame.VIDEORESIZE:
                     # Update screen if resized
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.FULLSCREEN | pygame.RESIZABLE)
+                    flags = pygame.RESIZABLE
+                    if not self.windowed:
+                        flags = pygame.FULLSCREEN | pygame.RESIZABLE
+                    self.screen = pygame.display.set_mode((event.w, event.h), flags)
                     w, h = event.w, event.h
                     # Notifier la GUI du resize (elle a déjà une méthode handle_events pour ça ?)
                     # Views.py toggle resize manually inside handle_events usually.

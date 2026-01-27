@@ -25,7 +25,9 @@ from model.scenarios import (
     scenario_lanchester,
     scenario_bataille_colline,
     scenario_deux_camps_eleves,
+    scenario_deux_camps_eleves,
     scenario_siege_chateau,
+    scenario_wonder_duel,
 )
 
 # --- REGISTRES ---
@@ -42,7 +44,9 @@ AVAILABLE_SCENARIOS = {
     "Scenario_Dur": scenario_simple_vs_braindead,
     "Bataille_Colline": scenario_bataille_colline,
     "Deux_Camps": scenario_deux_camps_eleves,
+    "Deux_Camps": scenario_deux_camps_eleves,
     "Siege_Chateau": scenario_siege_chateau,
+    "Wonder_Duel": scenario_wonder_duel,
 }
 
 
@@ -195,7 +199,7 @@ def run_tournament(generals, scenarios, rounds=10, alternate=True):
     """
     Lance un tournoi complet entre les généraux spécifiés.
     """
-    from tournament import Tournament
+    from .tournament import Tournament
 
     if not generals:
         generals = list(AVAILABLE_AIS.keys())

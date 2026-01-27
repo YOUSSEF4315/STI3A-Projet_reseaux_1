@@ -261,26 +261,31 @@ def plot_comparaison_lanchester(scenario_func, scenario_name="Bataille", save_pl
     return pred_winner, real_winner, erreur_moy
 
 
-def plot_loi_carree(unit_types, max_n=20, save_plot=True):
+def plot_loi_carree(unit_types, max_n=20, save_plot=True, num_runs=5):
     """
     Vérifie la loi carrée de Lanchester sur plusieurs types d'unités.
 
-    Si A affronte B avec B = 2*A, alors les pertes de B devraient être :
-    Pertes_B = 2*N - sqrt((2*N)^2 - N^2) = 2*N - N*sqrt(3)
+    Combat N vs 2N : B (2N unités) gagne toujours.
+    Survivants de B = sqrt((2N)² - N²) = N*sqrt(3) ≈ 1.73*N
 
     Args:
         unit_types: liste de types d'unités (ex: ["knight", "crossbowman"])
         max_n: valeur maximale de N à tester
         save_plot: si True, sauvegarde le graphique
+        num_runs: nombre de simulations par valeur de N (pour moyenner)
 
     Retourne : dict avec les résultats par type d'unité
     """
+    # Import ici pour utiliser MajorDaft (poursuit les ennemis = combat réel)
+    from presenter.ai import MajorDaft
+    
     if isinstance(unit_types, str):
         unit_types = [unit_types]
 
     print(f"\n{'='*60}")
     print(f"  VÉRIFICATION LOI CARRÉE DE LANCHESTER")
     print(f"  Types d'unité : {', '.join([u.upper() for u in unit_types])}")
+    print(f"  Runs par valeur : {num_runs}")
     print(f"{'='*60}\n")
 
     all_results = {}
@@ -289,35 +294,46 @@ def plot_loi_carree(unit_types, max_n=20, save_plot=True):
         print(f"\n--- Test {unit_type.upper()} ---")
 
         resultats_n = []
-        resultats_pertes_b = []
+        resultats_survivants_b = []
         resultats_theoriques = []
 
         for n in range(2, max_n + 1, 2):
             print(f"Test N = {n}...", end=" ")
 
-            # Créer le scénario N vs 2N
-            game = scenario_lanchester(unit_type, n)
+            survivants_runs = []
+            
+            for run in range(num_runs):
+                # Créer le scénario N vs 2N avec MajorDaft (poursuit l'ennemi le plus proche)
+                controllers = {
+                    "A": MajorDaft("A"),
+                    "B": MajorDaft("B"),
+                }
+                game = scenario_lanchester(unit_type, n, controllers=controllers)
 
-            # Simulation réelle
-            while not game.is_finished() and game.time < 300:
-                game.step(dt=0.2)
+                # Simulation réelle
+                while not game.is_finished() and game.time < 300:
+                    game.step(dt=0.2)
 
-            summary = game.get_battle_summary()
-            pertes_b = summary["losses"].get("B", {}).get("units", 0)
+                # Compter les survivants de B (l'équipe qui gagne)
+                survivants_b = len(game.alive_units_of_team("B"))
+                survivants_runs.append(survivants_b)
+            
+            # Moyenne des runs
+            survivants_b_moy = sum(survivants_runs) / len(survivants_runs)
 
-            # Théorie : Pertes de B = 2*N - sqrt((2*N)^2 - N^2) = 2*N - N*sqrt(3)
-            pertes_theoriques = 2 * n - n * np.sqrt(3)
+            # Théorie : Survivants de B = sqrt((2N)² - N²) = N*sqrt(3)
+            survivants_theoriques = n * np.sqrt(3)
 
             resultats_n.append(n)
-            resultats_pertes_b.append(pertes_b)
-            resultats_theoriques.append(pertes_theoriques)
+            resultats_survivants_b.append(survivants_b_moy)
+            resultats_theoriques.append(survivants_theoriques)
 
-            print(f"Pertes B = {pertes_b} (théorie : {pertes_theoriques:.1f})")
+            print(f"Survivants B = {survivants_b_moy:.1f} (théorie : {survivants_theoriques:.1f})")
 
         all_results[unit_type] = {
             'N': resultats_n,
-            'pertes_reelles': resultats_pertes_b,
-            'pertes_theoriques': resultats_theoriques
+            'survivants_reels': resultats_survivants_b,
+            'survivants_theoriques': resultats_theoriques
         }
 
     # Graphique
@@ -331,21 +347,21 @@ def plot_loi_carree(unit_types, max_n=20, save_plot=True):
     for idx, unit_type in enumerate(unit_types):
         data = all_results[unit_type]
 
-        # Graphique 1 : Comparaison pertes réelles vs théoriques
+        # Graphique 1 : Comparaison survivants réels vs théoriques
         ax1 = axes[idx, 0]
-        ax1.plot(data['N'], data['pertes_reelles'], 'o-', label='Pertes réelles',
+        ax1.plot(data['N'], data['survivants_reels'], 'o-', label='Survivants réels (B)',
                  linewidth=2, markersize=8, color='red')
-        ax1.plot(data['N'], data['pertes_theoriques'], 's--', label='Pertes théoriques (Lanchester)',
+        ax1.plot(data['N'], data['survivants_theoriques'], 's--', label='Survivants théoriques (N×√3)',
                  linewidth=2, markersize=6, color='blue', alpha=0.7)
         ax1.set_xlabel('N (taille armée A)', fontsize=12)
-        ax1.set_ylabel('Pertes de l\'armée B (2N)', fontsize=12)
+        ax1.set_ylabel('Survivants de B après victoire', fontsize=12)
         ax1.set_title(f'Loi Carrée - {unit_type.capitalize()}', fontsize=13, fontweight='bold')
         ax1.legend(fontsize=10)
         ax1.grid(True, alpha=0.3)
 
         # Graphique 2 : Erreur
         ax2 = axes[idx, 1]
-        erreur = np.array(data['pertes_reelles']) - np.array(data['pertes_theoriques'])
+        erreur = np.array(data['survivants_reels']) - np.array(data['survivants_theoriques'])
         ax2.bar(data['N'], erreur, color='purple', alpha=0.6)
         ax2.axhline(y=0, color='black', linestyle='-', linewidth=1)
         ax2.set_xlabel('N (taille armée A)', fontsize=12)

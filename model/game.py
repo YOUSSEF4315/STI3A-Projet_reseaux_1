@@ -334,6 +334,38 @@ class Game:
             self.winner = None
             return
 
+        # --- WONDER VICTORY CHECK ---
+        # Si une equipe a des Wonders au depart, elle doit les proteger.
+        # Si elle les perd tous, elle perd la partie ( = l'autre gagne).
+        
+        # 1. Identifier quelles equipes avaient des Wonders au debut (cached ou calculé)
+        # On regarde dans self.units (tous, morts ou vifs)
+        # Mais pour faire simple/rapide, on verifie juste l'etat actuel.
+        
+        teams_with_wonder_alive = set()
+        has_wonder_in_game = False
+        
+        for u in self.alive_units():
+            if u.__class__.__name__ == "Wonder":
+                has_wonder_in_game = True
+                teams_with_wonder_alive.add(getattr(u, "team", "?"))
+        
+        if has_wonder_in_game:
+            # Si le jeu contient des Wonders, la condition de victoire est "Avoir encore son Wonder"
+            # Si une seule équipe a encore son Wonder, elle gagne.
+            if len(teams_with_wonder_alive) == 1:
+                self.running = False
+                self.winner = next(iter(teams_with_wonder_alive))
+                return
+            elif len(teams_with_wonder_alive) == 0:
+                # Tout le monde a perdu son Wonder en meme temps ?? -> Nul
+                self.running = False
+                self.winner = None
+                return
+            # Sinon, le combat continue tant qu'il y a 2 Equipes avec Wonder
+            return
+
+        # --- STANDARD VICTORY (ANNIHILATION) ---
         teams_alive = {getattr(u, "team", None) for u in alive}
         teams_alive.discard(None)
         if len(teams_alive) == 1:
@@ -349,7 +381,6 @@ class Game:
 
     def get_winner(self) -> Optional[str]:
         return self.winner
-
 
     def update_unit(self, u, dt):
         """
