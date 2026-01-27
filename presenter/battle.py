@@ -120,12 +120,12 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
                         return base_game
 
             if not base_game.is_finished() and auto_play:
-                base_game.step(dt=0.1)
+                base_game.step(dt=0.05)
 
             gui.handle_input()
             gui.draw(screen)
             pygame.display.flip()
-            clock.tick(60)
+            clock.tick(30)
 
             if base_game.is_finished():
                 # Attendre un peu avant de quitter
@@ -190,7 +190,7 @@ def load_game(savefile):
         gui.handle_input()
         gui.draw(screen)
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(30)
 
     pygame.quit()
 
