@@ -367,8 +367,8 @@ class GUI:
 
         # --- CALIBRATION CONTROLS (TEMP) ---
         # T/G = Up/Down, F/H = Left/Right
-        if not hasattr(self, 'panel_offset_x'): self.panel_offset_x = -35
-        if not hasattr(self, 'panel_offset_y'): self.panel_offset_y = -12
+        if not hasattr(self, 'panel_offset_x'): self.panel_offset_x = -21
+        if not hasattr(self, 'panel_offset_y'): self.panel_offset_y = -6
         
         # Debounce slightly or just run fast? Run fast creates smoothness but prints a lot.
         # Let's use a small counter or just print every 10 frames if changed?
@@ -744,8 +744,8 @@ class GUI:
              
              # MANUAL CORRECTION: Shift Left and Up (Calibration Mode)
              # Use self.panel_offset_x/y if they exist, else default
-             off_x = getattr(self, 'panel_offset_x', -5) # Reduced left offset (Shifted right)
-             off_y = getattr(self, 'panel_offset_y', -12)
+             off_x = getattr(self, 'panel_offset_x', -21) # Reduced left offset (Shifted right)
+             off_y = getattr(self, 'panel_offset_y', -6)
              
              panel_rect.x += off_x
              panel_rect.y += off_y
