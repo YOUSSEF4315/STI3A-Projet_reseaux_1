@@ -15,26 +15,21 @@ TEAM_INFO = {
 }
 
 def main():
-    # 1. SETUP DU JEU
     print("Initialisation de la bataille...")
     game = scenario_simple_vs_braindead()
 
     pygame.init()
     
-    # Dimensions de départ
     START_W = 1024
     START_H = 768
     
-    # --- IMPORTANT : On active le redimensionnement ici ---
     screen = pygame.display.set_mode((START_W, START_H), pygame.RESIZABLE)
     
     pygame.display.set_caption("Simulation : Age of Python")
     clock = pygame.time.Clock()
 
-    # On passe les dimensions initiales à la GUI
     view = GUI(game, START_W, START_H)
     
-    # Options de simulation
     auto_play = False
     game_over_processed = False 
 
@@ -55,11 +50,8 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
-            # --- C'EST ICI QUE LA MAGIE OPÈRE ---
-            # On envoie l'événement (clic, molette, resize) à la vue pour qu'elle le traite
             view.handle_events(event)
             
-            # Gestion des touches globales (Pause, Pas à pas)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_p:
                     if not game.is_finished():
@@ -86,7 +78,6 @@ def main():
                 game.step(dt=0.02)
         
         else:
-            # Fin de partie (Console)
             if not game_over_processed:
                 print("\n" + "="*30)
                 print("   LA BATAILLE EST TERMINÉE !")
@@ -105,13 +96,10 @@ def main():
 
         # --- AFFICHAGE (VIEW) ---
         
-        # 1. Gestion des touches maintenues (Flèches directionnelles)
         view.handle_input() 
         
-        # 2. Dessin de la scène
         view.draw(screen)
         
-        # 3. Overlay de Fin de partie (Centré dynamiquement)
         if game.is_finished():
             winner = game.get_winner()
             font = pygame.font.SysFont("Arial", 40, bold=True)
@@ -124,7 +112,6 @@ def main():
                 lines.append((f"VICTOIRE : {info.get('name', winner)}", (255, 215, 0)))
                 lines.append((f"Général : {info.get('ia', '?')}", (200, 200, 200)))
 
-            # Centrage basé sur la largeur actuelle de la fenêtre (view.screen_w)
             center_x = view.screen_w // 2 
             start_y = 100 
             
@@ -132,7 +119,6 @@ def main():
                 surf = font.render(txt, True, color)
                 rect = surf.get_rect(center=(center_x, start_y + i * 50))
                 
-                # Fond semi-transparent
                 bg = pygame.Surface((rect.width + 20, rect.height + 10))
                 bg.set_alpha(180)
                 bg.fill((0, 0, 0))

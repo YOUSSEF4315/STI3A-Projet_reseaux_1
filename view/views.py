@@ -25,8 +25,8 @@ COLOR_TEXT = (255, 255, 255)
 # --- GESTION ANIMATION ---
 class AnimationManager:
     def __init__(self):
-        self.animations = {} # {unit_type: {action: {direction_idx: [frames]}}}
-        self.default_assets = {} # Fallback static assets
+        self.animations = {}
+        self.default_assets = {}
 
     def load_spritesheet(self, unit_name, action, path, rows=8, cols=15, target_size=(100, 100)):
         if not os.path.exists(path):
@@ -44,9 +44,6 @@ class AnimationManager:
             if action not in self.animations[unit_name]:
                 self.animations[unit_name][action] = {}
 
-            # On suppose que les rangées correspondent aux directions
-            # Standard Isometric Directions often:
-            # Row order can vary. We will store simple 0..rows.
             for r in range(rows):
                 frames = []
                 for c in range(cols):
@@ -56,7 +53,7 @@ class AnimationManager:
                         scaled = pygame.transform.smoothscale(sub, target_size)
                         frames.append(scaled)
                     except ValueError:
-                        pass # Out of bounds?
+                        pass
                 self.animations[unit_name][action][r] = frames
             
             print(f"Loaded animation: {unit_name} / {action} ({rows} dirs, {cols} frames)")
@@ -78,7 +75,6 @@ class AnimationManager:
             if unit_name not in self.animations: self.animations[unit_name] = {}
             if action not in self.animations[unit_name]: self.animations[unit_name][action] = {}
             
-            # Map all 16 directions to this single frame
             frame_list = [scaled]
             for r in range(16):
                 self.animations[unit_name][action][r] = frame_list
@@ -90,37 +86,26 @@ class AnimationManager:
             return False
 
     def get_frame(self, unit_name, action, direction, frame_idx):
-        """
-        Retrieves the specific frame.
-        unit_name: 'knight', 'pikeman', etc.
-        action: 'walk', 'idle', 'attack'
-        direction: 0-7
-        frame_idx: int
-        """
-        # Fallback to idle if action not found
         if unit_name not in self.animations:
             return None
-        
-        # Check specific action, fallback to 'idle', then 'walk'
+
         anim_set = self.animations[unit_name].get(action)
         if not anim_set:
             anim_set = self.animations[unit_name].get('idle')
         if not anim_set:
             anim_set = self.animations[unit_name].get('walk')
-            
+
         if not anim_set:
             return None
 
-        # Clamp direction
         d = direction % 8
         if d not in anim_set:
-            # Fallback to first available direction
             d = next(iter(anim_set.keys()), 0)
-        
+
         frames = anim_set[d]
         if not frames:
             return None
-            
+
         return frames[frame_idx % len(frames)]
 
 class GUI:
@@ -158,8 +143,8 @@ class GUI:
         
         # --- ANIMATION SYSTEM ---
         self.anim_mgr = AnimationManager()
-        self.assets = {} # For static assets (grass, icons)
-        self.unit_states = {} # {id(unit): {'last_pos': (x,y), 'last_time': t, 'direction': 0, 'action': 'idle', 'frame_idx': 0}}
+        self.assets = {}
+        self.unit_states = {}
         self._load_assets()
 
         pygame.font.init()
@@ -169,30 +154,24 @@ class GUI:
         pygame.mouse.get_rel()
 
     def _load_assets(self):
-        # 1. Load Ground Tileset (ground_grasses.png)
         self.grass_tiles = {'normal': [], 'high': [], 'low': []}
 
         try:
             tileset = pygame.image.load("assets/ground_grasses.png").convert_alpha()
             ts_width, ts_height = tileset.get_size()
 
-            # The tileset is 1024x768. 
-            # User confirmed correct slicing is 128x64.
             slice_w = 128
             slice_h = 64
-            
+
             cols = ts_width // slice_w
             rows = ts_height // slice_h
-            
-            for row in range(2): # User requested only first 2 rows
+
+            for row in range(2):
                 for col in range(cols):
                     rect = pygame.Rect(col * slice_w, row * slice_h, slice_w, slice_h)
                     tile = tileset.subsurface(rect).copy()
-                    
-                    # Scale down to TILE_WIDTH/HEIGHT (64x32) for rendering
                     scaled = pygame.transform.smoothscale(tile, (TILE_WIDTH, TILE_HEIGHT))
-                    
-                    # Add to ALL categories since user wants only these tiles used everywhere
+
                     self.grass_tiles['normal'].append(scaled)
                     self.grass_tiles['high'].append(scaled)
                     self.grass_tiles['low'].append(scaled)
@@ -402,9 +381,8 @@ class GUI:
                 'action': 'idle',
                 'frame_idx': 0,
                 'accum_time': 0,
-                'gone': False # Flag to stop drawing after decay
+                'gone': False
             }
-            # Si on spawn mort (ne devrait pas arriver), on force la mort
             if is_dead:
                  self.unit_states[uid]['action'] = 'death'
             
@@ -415,20 +393,17 @@ class GUI:
             return state
 
         dt = now - state['last_time']
-        
-        # --- LOGIQUE DE MORT ---
+
         if is_dead:
             if state['action'] not in ['death', 'decay']:
                 state['action'] = 'death'
                 state['frame_idx'] = 0
                 state['accum_time'] = 0
-            
-            # Gestion Animation One-Shot (Death -> Decay -> Gone)
+
             state['accum_time'] += dt
             if state['accum_time'] > 100:
                 state['accum_time'] = 0
-                
-                # Check end of animation
+
                 u_type = type(unit).__name__.lower()
                 current_anim = self.anim_mgr.animations.get(u_type, {}).get(state['action'], {}).get(state['direction'], [])
                 total_frames = len(current_anim)
@@ -436,56 +411,39 @@ class GUI:
                 if state['frame_idx'] < total_frames - 1:
                     state['frame_idx'] += 1
                 else:
-                    # Animation Finished
                     if state['action'] == 'death':
                         state['action'] = 'decay'
                         state['frame_idx'] = 0
                     elif state['action'] == 'decay':
                          state['gone'] = True
-        
+
         else:
-            # --- LOGIQUE VIVANT ---
             dx = unit.x - state['last_pos'][0]
             dy = unit.y - state['last_pos'][1]
             dist = math.hypot(dx, dy)
             is_moving = dist > 0.001
-            
-            # Cooldown Monitoring for Attack Detection
+
             current_cd = getattr(unit, 'cooldown', 0)
             last_cd = state.get('last_cooldown', 0)
-            
-            # Trigger Attack if cooldown INCREASED (meaning it was reset by an attack)
-            # We also treat high cooldown as possible attack if we are not moving
+
             if current_cd > last_cd and not is_moving:
                  state['action'] = 'attack'
                  state['frame_idx'] = 0
                  state['accum_time'] = 0
             
-            # State Machine for Living Units
-            # 1. Moving overrides everything (Hit & Run / Chase)
             if is_moving:
                 new_action = 'walk'
-                # Update Direction
                 angle = math.degrees(math.atan2(dy, dx))
-                
-                # MAPPING 0 (Right) to 15 (Left) based on User Feedback.
-                # Use Absolute angle to map North (neg) to South (pos) as data seems 180-deg only.
-                # 0 deg (Rights) -> 0
-                # +/-180 deg (Left) -> 15
+
                 idx = int(abs(angle) / 180.0 * 15)
                 idx = max(0, min(15, idx))
-                
-                # INVERSION GLOBAL (Symmetry for Movement)
                 idx = 15 - idx
-                
+
                 state['direction'] = idx
-                
+
             elif state['action'] == 'attack':
-                # 2. Finishing Attack Animation
                 new_action = 'attack'
-                
-                # --- FIX ORIENTATION TIREURS ---
-                # Si on attaque une cible, on se tourne vers elle !
+
                 intent = getattr(unit, 'intent', None)
                 if intent and len(intent) >= 2 and intent[0] == 'attack':
                      target = intent[1]
@@ -493,60 +451,42 @@ class GUI:
                          dx_t = target.x - unit.x
                          dy_t = target.y - unit.y
                          angle_t = math.degrees(math.atan2(dy_t, dx_t))
-                         
+
                          idx_t = int(abs(angle_t) / 180.0 * 15)
                          idx_t = max(0, min(15, idx_t))
-                         
-                         idx_t = int(abs(angle_t) / 180.0 * 15)
-                         idx_t = max(0, min(15, idx_t))
-                         
-                         # Apply global inversion (standard baseline)
                          idx_t = 15 - idx_t
-                         
-                         # SPECIFIC FIX FOR CROSSBOWMAN TEAM B
-                         # User reports they shoot "where nobody is" (Backwards).
-                         # We rotate them 180 degrees (-/+ 8 rows) to face the enemy.
+
                          u_type_temp = type(unit).__name__.lower()
                          unit_team = getattr(unit, 'team', 'A')
-                         
+
                          if u_type_temp == 'crossbowman' and unit_team == 'B':
                              idx_t = (idx_t + 8) % 16
-                             
+
                          state['direction'] = idx_t
 
-                # Check Frame End
                 u_type = type(unit).__name__.lower()
                 current_anim = self.anim_mgr.animations.get(u_type, {}).get('attack', {}).get(state['direction'], [])
-                
-                # If animation finished or no anim, go back to idle
+
                 if not current_anim or state['frame_idx'] >= len(current_anim) - 1:
                     new_action = 'idle'
-                    
+
             else:
-                # 3. Default Idle
                 new_action = 'idle'
 
-            # Apply State Change
             if new_action != state['action']:
-                # Don't reset frame if we are just continuing attack
                 if not (state['action'] == 'attack' and new_action == 'attack'):
                     state['action'] = new_action
                     state['frame_idx'] = 0
                     state['accum_time'] = 0
             else:
-                # Advance Frame
                 state['accum_time'] += dt
-                
-                speed_factor = 1.0
-                # Speed up attack if reload time is fast? 
-                # For now constant speed.
-                
-                if state['accum_time'] > 100: # 100ms per frame
+
+                if state['accum_time'] > 100:
                     state['frame_idx'] += 1
                     state['accum_time'] = 0
 
             state['last_pos'] = (unit.x, unit.y)
-            state['last_cooldown'] = current_cd # Save for next frame
+            state['last_cooldown'] = current_cd
         
         return state
 

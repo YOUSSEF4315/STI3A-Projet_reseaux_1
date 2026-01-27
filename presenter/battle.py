@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
-battle.py - CLI Entry Point for MedievAIl Battle Simulator
-
-Usage:
-    battle run <scenario> <AI1> <AI2> [-t] [-d DATAFILE]
-    battle load <savefile>
-    battle tourney [-G AI1 AI2...] [-S SCENARIO1 SCENARIO2] [-N=10] [-na]
-    battle plot <AI> <plotter> <scenario(arg1,...)> <range> [-N=10]
+CLI Entry Point for MedievAIl Battle Simulator.
 """
 
 import argparse
@@ -14,7 +8,6 @@ import pickle
 import sys
 import os
 
-# --- IMPORTS ---
 from model.game import Game
 from model.map import BattleMap
 from .ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
@@ -29,8 +22,6 @@ from model.scenarios import (
     scenario_siege_chateau,
     scenario_wonder_duel,
 )
-
-# --- REGISTRES ---
 AVAILABLE_AIS = {
     "Braindead": CaptainBraindead,
     "Daft": MajorDaft,
@@ -51,21 +42,15 @@ AVAILABLE_SCENARIOS = {
 
 
 def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=None, savefile=None):
-    """
-    Exécute une bataille entre deux IA sur un scénario donné.
-    """
-    # 1. Création du scénario de base (pour récupérer la map)
     if scenario_name in AVAILABLE_SCENARIOS:
         base_game = AVAILABLE_SCENARIOS[scenario_name]()
     else:
-        # Permet d'utiliser eval() pour des scénarios avec paramètres
         try:
             base_game = eval(scenario_name)
         except Exception as e:
             print(f"Erreur : Scénario '{scenario_name}' inconnu ou invalide. {e}")
             return None
 
-    # 2. Remplacer les contrôleurs par les IA demandées
     if ai1_name not in AVAILABLE_AIS:
         print(f"Erreur : IA '{ai1_name}' inconnue. Disponibles : {list(AVAILABLE_AIS.keys())}")
         return None
@@ -73,21 +58,17 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
         print(f"Erreur : IA '{ai2_name}' inconnue. Disponibles : {list(AVAILABLE_AIS.keys())}")
         return None
 
-    # On recrée le game avec les bonnes IA
     controllers = {
         "A": AVAILABLE_AIS[ai1_name]("A"),
         "B": AVAILABLE_AIS[ai2_name]("B"),
     }
     base_game.controllers = controllers
 
-    # 3. Lancer la simulation
     if terminal_mode:
-        # Mode Terminal (curses)
         from view.terminal_view import TerminalView
         view = TerminalView(base_game)
         view.start()
     else:
-        # Mode GUI (pygame)
         import pygame
         from view.views import GUI
 
@@ -112,7 +93,6 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
                     if event.key == pygame.K_SPACE:
                         base_game.step(dt=0.1)
                     if event.key == pygame.K_F9:
-                        # Switch to terminal mode
                         pygame.quit()
                         from view.terminal_view import TerminalView
                         view = TerminalView(base_game)
@@ -128,20 +108,17 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
             clock.tick(30)
 
             if base_game.is_finished():
-                # Attendre un peu avant de quitter
                 pygame.time.wait(2000)
                 running = False
 
         pygame.quit()
 
-    # 4. Écriture des données si demandé
     if datafile:
         summary = base_game.get_battle_summary()
         with open(datafile, "w", encoding="utf-8") as f:
             f.write(str(summary))
         print(f"Données écrites dans {datafile}")
 
-    # 5. Sauvegarde de l'état complet si demandé
     if savefile:
         with open(savefile, "wb") as f:
             pickle.dump(base_game, f)
@@ -151,7 +128,6 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
 
 
 def load_game(savefile):
-    """Charge une partie sauvegardée."""
     if not os.path.exists(savefile):
         print(f"Erreur : Fichier '{savefile}' introuvable.")
         return
@@ -162,7 +138,6 @@ def load_game(savefile):
     print(f"Partie chargée depuis {savefile}")
     print(f"Temps simulé : {game.time:.1f}s, Unités en vie : {len(game.alive_units())}")
 
-    # Lancer en mode GUI
     import pygame
     from view.views import GUI
 
@@ -196,9 +171,6 @@ def load_game(savefile):
 
 
 def run_tournament(generals, scenarios, rounds=10, alternate=True):
-    """
-    Lance un tournoi complet entre les généraux spécifiés.
-    """
     from .tournament import Tournament
 
     if not generals:
@@ -219,14 +191,6 @@ def run_tournament(generals, scenarios, rounds=10, alternate=True):
 
 
 def run_plot(ai_name, plotter_name, scenario_expr, range_expr=None, rounds=10):
-    """
-    Génère des graphiques basés sur les lois de Lanchester.
-
-    Plotters disponibles:
-    - PlotLanchester: Graphique simple loi carrée (N vs Pertes)
-    - CompareLanchester: Compare théorie Lanchester vs simulation réelle
-    - SquareLaw: Vérification détaillée de la loi carrée
-    """
     from .graphes_lanchester import (
         plot_loi_carree,
         plot_comparaison_lanchester,
@@ -234,15 +198,10 @@ def run_plot(ai_name, plotter_name, scenario_expr, range_expr=None, rounds=10):
 
     plotter_lower = plotter_name.lower()
 
-    # PLOTTER 1: Loi carrée simple (format PDF)
     if plotter_lower in ["plotlanchester", "lanchester", "squarelaw"]:
-        # Parse les types d'unités
         try:
-            # scenario_expr format: "Lanchester [Knight,Crossbow]" or "[knight,pikeman]"
             if "[" in scenario_expr and "]" in scenario_expr:
-                # Extraire ce qui est entre []
                 bracket_content = scenario_expr.split("[")[1].split("]")[0]
-                # Séparer par virgules et nettoyer
                 unit_types = [u.strip().strip('"').strip("'").lower() for u in bracket_content.split(",")]
             else:
                 unit_types = ["knight"]
@@ -251,10 +210,8 @@ def run_plot(ai_name, plotter_name, scenario_expr, range_expr=None, rounds=10):
             print("Format attendu : Lanchester [knight,crossbowman] ou [Knight,Pikeman]")
             unit_types = ["knight"]
 
-        # Parse le range
         if range_expr:
             try:
-                # Évaluer le range (ex: "range(1,100)" ou "range(2,20,2)")
                 values = list(eval(range_expr))
                 max_n = max(values)
             except Exception as e:
@@ -269,12 +226,9 @@ def run_plot(ai_name, plotter_name, scenario_expr, range_expr=None, rounds=10):
         print(f"N max : {max_n}")
         print(f"{'='*50}\n")
 
-        # Utiliser la fonction avancée de graphes_lanchester
         plot_loi_carree(unit_types, max_n=max_n, save_plot=True)
 
-    # PLOTTER 2: Comparaison Lanchester vs Réel
     elif plotter_lower in ["comparelanchester", "compare", "verify"]:
-        # Déterminer le scénario à comparer
         scenario_func = None
         scenario_name = scenario_expr
 
@@ -299,7 +253,6 @@ def run_plot(ai_name, plotter_name, scenario_expr, range_expr=None, rounds=10):
         print(f"Scénario : {scenario_name}")
         print(f"{'='*50}\n")
 
-        # Utiliser la fonction avancée de comparaison
         plot_comparaison_lanchester(scenario_func, scenario_name, save_plot=True)
 
     else:
