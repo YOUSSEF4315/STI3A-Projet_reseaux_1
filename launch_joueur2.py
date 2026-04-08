@@ -1,13 +1,24 @@
+#!/usr/bin/env python3
 """
-Script de lancement rapide pour le Joueur 2 (port IPC = 50002).
-Configure la variable d'environnement P2P_PORT avant de lancer le jeu.
+Lancement du jeu pour le Joueur 2.
+Utilise le port IPC 50002 (daemon Joueur 2).
 """
 import os
-import sys
 
-# Indiquer au jeu quel port IPC utiliser (celui du daemon Joueur 2)
-os.environ["P2P_PORT"] = "50002"
+# Configurer avant tout import du jeu
+os.environ["P2P_PORT"]      = "50002"
 os.environ["P2P_PLAYER_ID"] = "B"
 
-# Lancer le launcher normal
-import launch
+# Lancer le menu normalement
+import sys
+# On ajoute le répertoire courant si besoin
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from launch import main
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user. Goodbye!")
+        sys.exit(0)

@@ -117,6 +117,10 @@ class IPCClient:
         """Envoie un dump de toutes les entités locales qu'on possède au C pour broadcast."""
         self._send_message("STATE_UPDATE", sync_state)
 
+    def send_ready(self):
+        """Signal de readiness : envoie PLAYER_READY au pair pour déclencher le démarrage simultané."""
+        self._send_message("PLAYER_READY", {"player_id": self.local_id})
+
     def request_ownership(self, entity_id: str):
         """Demande au P2P l'autorité sur une unité."""
         self._send_message("REQUEST_OWNERSHIP", {"entity_id": entity_id})

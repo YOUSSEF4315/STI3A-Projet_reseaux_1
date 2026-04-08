@@ -929,4 +929,30 @@ class GUI:
                 key_name = pygame.key.name(event.key)
                 events.append({"type": "KEYDOWN", "key": key_name})
         self.handle_input()
-        return events
+        return events
+
+    def render_waiting_screen(self, message="En attente du Joueur 2...", sub="La bataille démarrera automatiquement."):
+        """Affiche un écran de chargement / attente plein écran."""
+        if not self.screen:
+            return
+        # Fond dégradé sombre
+        self.screen.fill((15, 15, 30))
+
+        # Cercle d'animation pulsante
+        t = pygame.time.get_ticks() / 500.0
+        radius = int(30 + 8 * abs(math.sin(t)))
+        cx, cy = self.screen_w // 2, self.screen_h // 2 - 80
+        pygame.draw.circle(self.screen, (255, 200, 50), (cx, cy - 80), radius, 4)
+
+        # Titre
+        font_big  = pygame.font.SysFont("Arial", 38, bold=True)
+        font_sub  = pygame.font.SysFont("Arial", 22)
+
+        surf_msg = font_big.render(message, True, (255, 220, 80))
+        surf_sub = font_sub.render(sub, True, (160, 160, 180))
+
+        self.screen.blit(surf_msg, surf_msg.get_rect(center=(self.screen_w // 2, cy)))
+        self.screen.blit(surf_sub, surf_sub.get_rect(center=(self.screen_w // 2, cy + 60)))
+
+        pygame.display.flip()
+
