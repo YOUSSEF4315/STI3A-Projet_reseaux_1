@@ -7,173 +7,181 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define PORT_LOCAL 50000     // Pour parler au Python local
-#define PORT_RESEAU 50001    // Pour écouter d'autres joueurs
 #define BUFFER_SIZE 8192
 
-// Fonction pour configurer un socket non bloquant
 void set_nonblocking(SOCKET s) {
     u_long mode = 1;
     ioctlsocket(s, FIONBIO, &mode);
 }
 
-// Désactive l'algorithme de Nagle (pour la réactivité temps réel)
 void set_tcp_nodelay(SOCKET s) {
     int flag = 1;
     setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int));
 }
 
 int main(int argc, char* argv[]) {
+    // Usage:
+    //   daemon.exe                              -> Joueur 1 (py=50000, net=50001, attend)
+    //   daemon.exe <peer_ip>                    -> Joueur 2 (py=50000, net=50001, rejoint peer)
+    //   daemon.exe <py_port> <net_port>         -> Joueur 1 avec ports custom
+    //   daemon.exe <py_port> <net_port> <peer_ip> <peer_port>  -> Joueur 2 avec ports custom
+
+    int PORT_LOCAL  = 50000;
+    int PORT_RESEAU = 50001;
+    char peer_ip[64] = "";
+    int  peer_port    = 50001;
+
+    if (argc == 2) {
+        // daemon.exe <peer_ip>  → rejoindre Joueur 1 sur son port réseau par défaut
+        strncpy(peer_ip, argv[1], sizeof(peer_ip) - 1);
+    } else if (argc == 3) {
+        // daemon.exe <py_port> <net_port>
+        PORT_LOCAL  = atoi(argv[1]);
+        PORT_RESEAU = atoi(argv[2]);
+    } else if (argc == 5) {
+        // daemon.exe <py_port> <net_port> <peer_ip> <peer_port>
+        PORT_LOCAL  = atoi(argv[1]);
+        PORT_RESEAU = atoi(argv[2]);
+        strncpy(peer_ip, argv[3], sizeof(peer_ip) - 1);
+        peer_port   = atoi(argv[4]);
+    }
+
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("Erreur d'initialisation Winsock.\n");
+        printf("Erreur Winsock.\n");
         return 1;
     }
 
-    SOCKET py_listener = INVALID_SOCKET;
+    SOCKET py_listener  = INVALID_SOCKET;
     SOCKET net_listener = INVALID_SOCKET;
-    
-    SOCKET py_client = INVALID_SOCKET;
-    SOCKET net_client = INVALID_SOCKET; // L'adversaire distant
-    
-    // 1. Démarrer l'écoute Locale (Python)
+    SOCKET py_client    = INVALID_SOCKET;
+    SOCKET net_client   = INVALID_SOCKET;
+
+    // --- Écoute Python local ---
     py_listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int opt = 1;
+    setsockopt(py_listener, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
     struct sockaddr_in py_addr;
-    py_addr.sin_family = AF_INET;
-    py_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // Sécurisé: que du localhost
-    py_addr.sin_port = htons(PORT_LOCAL);
-    bind(py_listener, (struct sockaddr*)&py_addr, sizeof(py_addr));
+    py_addr.sin_family      = AF_INET;
+    py_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    py_addr.sin_port        = htons(PORT_LOCAL);
+    if (bind(py_listener, (struct sockaddr*)&py_addr, sizeof(py_addr)) == SOCKET_ERROR) {
+        printf("[Daemon C] ERREUR: port %d deja utilise ! (code %d)\n", PORT_LOCAL, WSAGetLastError());
+        WSACleanup();
+        return 1;
+    }
     listen(py_listener, SOMAXCONN);
     set_nonblocking(py_listener);
-    
-    // 2. Démarrer l'écoute Réseau (Adversaires)
+
+    // --- Écoute réseau P2P ---
     net_listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    setsockopt(net_listener, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
     struct sockaddr_in net_addr;
-    net_addr.sin_family = AF_INET;
-    net_addr.sin_addr.s_addr = INADDR_ANY; // Ouvert sur toutes les IP locales/publiques
-    net_addr.sin_port = htons(PORT_RESEAU);
-    bind(net_listener, (struct sockaddr*)&net_addr, sizeof(net_addr));
+    net_addr.sin_family      = AF_INET;
+    net_addr.sin_addr.s_addr = INADDR_ANY;
+    net_addr.sin_port        = htons(PORT_RESEAU);
+    if (bind(net_listener, (struct sockaddr*)&net_addr, sizeof(net_addr)) == SOCKET_ERROR) {
+        printf("[Daemon C] ERREUR: port reseau %d deja utilise ! (code %d)\n", PORT_RESEAU, WSAGetLastError());
+        WSACleanup();
+        return 1;
+    }
     listen(net_listener, SOMAXCONN);
     set_nonblocking(net_listener);
 
-    printf("[Daemon C] Lancement du Routeur P2P Best-Effort !\n");
-    printf(" -> Ecoute Locale Python sur le port %d\n", PORT_LOCAL);
-    printf(" -> Ecoute Reseau Distant sur le port %d\n", PORT_RESEAU);
+    printf("========================================\n");
+    printf("[Daemon C] Routeur P2P Best-Effort\n");
+    printf(" -> Python local : port %d\n", PORT_LOCAL);
+    printf(" -> Reseau P2P   : port %d\n", PORT_RESEAU);
 
-    // 3. Cas Client : on veut rejoindre la partie de quelqu'un d'autre
-    if (argc >= 2) {
-        const char* target_ip = argv[1];
-        printf("[Daemon C] Tentative de connexion a %s:%d ...\n", target_ip, PORT_RESEAU);
-        
+    // --- Mode client : connexion vers un pair ---
+    if (strlen(peer_ip) > 0) {
+        printf(" -> Connexion vers %s:%d ...\n", peer_ip, peer_port);
         net_client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        struct sockaddr_in target_addr;
-        target_addr.sin_family = AF_INET;
-        target_addr.sin_addr.s_addr = inet_addr(target_ip);
-        target_addr.sin_port = htons(PORT_RESEAU);
-        
-        // Bloquant pendant la connexion pour simplifier
-        if (connect(net_client, (struct sockaddr*)&target_addr, sizeof(target_addr)) != SOCKET_ERROR) {
-            printf("[Daemon C] -> Connecte avec succes au reseau P2P adversaire !\n");
+        struct sockaddr_in target;
+        target.sin_family      = AF_INET;
+        target.sin_addr.s_addr = inet_addr(peer_ip);
+        target.sin_port        = htons(peer_port);
+        if (connect(net_client, (struct sockaddr*)&target, sizeof(target)) != SOCKET_ERROR) {
+            printf(" -> Connecte au pair P2P !\n");
             set_nonblocking(net_client);
             set_tcp_nodelay(net_client);
         } else {
-            printf("[Daemon C] Erreur: impossible de joindre %s\n", target_ip);
+            printf(" -> Echec connexion (code %d)\n", WSAGetLastError());
             closesocket(net_client);
             net_client = INVALID_SOCKET;
         }
     }
+    printf("========================================\n");
+    printf("En attente de connexions...\n\n");
 
     char buffer[BUFFER_SIZE];
     fd_set readfds;
 
-    // Boucle Principale de Routage (Select)
     while (1) {
         FD_ZERO(&readfds);
         FD_SET(py_listener, &readfds);
         FD_SET(net_listener, &readfds);
-        
-        if (py_client != INVALID_SOCKET) FD_SET(py_client, &readfds);
+        if (py_client  != INVALID_SOCKET) FD_SET(py_client,  &readfds);
         if (net_client != INVALID_SOCKET) FD_SET(net_client, &readfds);
-        
-        // Timeout de sécurité pour éviter de freezer si problème Windows
-        struct timeval timeout;
-        timeout.tv_sec = 1;
-        timeout.tv_usec = 0;
 
+        struct timeval timeout = {1, 0};
         int activity = select(0, &readfds, NULL, NULL, &timeout);
-        
-        if (activity == SOCKET_ERROR) {
-            printf("Erreur select()\n");
-            break;
-        }
+        if (activity == SOCKET_ERROR) { printf("Erreur select()\n"); break; }
+        if (activity == 0) continue;
 
-        if (activity == 0) continue; // Timeout (Silence réseau)
-
-        // A. Nouvelle Connexion d'un Python Local
+        // A. Nouveau Python local
         if (FD_ISSET(py_listener, &readfds)) {
-            SOCKET client = accept(py_listener, NULL, NULL);
-            if (client != INVALID_SOCKET) {
-                if (py_client != INVALID_SOCKET) closesocket(py_client); // Tolère 1 seul python
-                py_client = client;
+            SOCKET c = accept(py_listener, NULL, NULL);
+            if (c != INVALID_SOCKET) {
+                if (py_client != INVALID_SOCKET) closesocket(py_client);
+                py_client = c;
                 set_nonblocking(py_client);
                 set_tcp_nodelay(py_client);
-                printf("[Daemon C] -> Python Local CONNECTE.\n");
+                printf("[Daemon C] Python local connecte (port %d)\n", PORT_LOCAL);
             }
         }
 
-        // B. Nouvelle Connexion d'un Adversaire Distant
+        // B. Nouveau pair P2P entrant
         if (FD_ISSET(net_listener, &readfds)) {
-            SOCKET client = accept(net_listener, NULL, NULL);
-            if (client != INVALID_SOCKET) {
-                if (net_client != INVALID_SOCKET) closesocket(net_client); // Tolère 1 seul adversaire pour le moment
-                net_client = client;
+            SOCKET c = accept(net_listener, NULL, NULL);
+            if (c != INVALID_SOCKET) {
+                if (net_client != INVALID_SOCKET) closesocket(net_client);
+                net_client = c;
                 set_nonblocking(net_client);
                 set_tcp_nodelay(net_client);
-                printf("[Daemon C] -> Adversaire Distant CONNECTE !\n");
+                printf("[Daemon C] Adversaire P2P connecte (port %d)\n", PORT_RESEAU);
             }
         }
 
-        // C. Réception de données depuis Python Local -> Routage vers Distant
+        // C. Python -> Reseau
         if (py_client != INVALID_SOCKET && FD_ISSET(py_client, &readfds)) {
             memset(buffer, 0, BUFFER_SIZE);
-            int valread = recv(py_client, buffer, BUFFER_SIZE - 1, 0);
-            if (valread > 0) {
-                // Pour débug : printf("[Python] -> [Distant] %d bytes\n", valread);
-                // Si on a un adversaire connecté, on forwarde tout brutalement.
-                if (net_client != INVALID_SOCKET) {
-                    send(net_client, buffer, valread, 0);
-                }
-            } else if (valread == 0 || (valread == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)) {
-                printf("[Daemon C] Python Local s'est deconnecte.\n");
-                closesocket(py_client);
-                py_client = INVALID_SOCKET;
+            int n = recv(py_client, buffer, BUFFER_SIZE - 1, 0);
+            if (n > 0) {
+                if (net_client != INVALID_SOCKET) send(net_client, buffer, n, 0);
+            } else if (n == 0 || WSAGetLastError() != WSAEWOULDBLOCK) {
+                printf("[Daemon C] Python local deconnecte.\n");
+                closesocket(py_client); py_client = INVALID_SOCKET;
             }
         }
 
-        // D. Réception de données depuis Adversaire Distant -> Routage vers Local Python
+        // D. Reseau -> Python
         if (net_client != INVALID_SOCKET && FD_ISSET(net_client, &readfds)) {
             memset(buffer, 0, BUFFER_SIZE);
-            int valread = recv(net_client, buffer, BUFFER_SIZE - 1, 0);
-            if (valread > 0) {
-                // Pour débug : printf("[Distant] -> [Python] %d bytes\n", valread);
-                // On transfère le JSON à notre instance locale du jeu.
-                if (py_client != INVALID_SOCKET) {
-                    send(py_client, buffer, valread, 0);
-                }
-            } else if (valread == 0 || (valread == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)) {
-                printf("[Daemon C] Adversaire Distant s'est deconnecte.\n");
-                closesocket(net_client);
-                net_client = INVALID_SOCKET;
+            int n = recv(net_client, buffer, BUFFER_SIZE - 1, 0);
+            if (n > 0) {
+                if (py_client != INVALID_SOCKET) send(py_client, buffer, n, 0);
+            } else if (n == 0 || WSAGetLastError() != WSAEWOULDBLOCK) {
+                printf("[Daemon C] Pair P2P deconnecte.\n");
+                closesocket(net_client); net_client = INVALID_SOCKET;
             }
         }
     }
 
-    // Libération des ressources (Normalement inaccessible sans Ctrl+C)
-    if (py_client != INVALID_SOCKET) closesocket(py_client);
+    if (py_client  != INVALID_SOCKET) closesocket(py_client);
     if (net_client != INVALID_SOCKET) closesocket(net_client);
     closesocket(py_listener);
     closesocket(net_listener);
     WSACleanup();
-
     return 0;
 }

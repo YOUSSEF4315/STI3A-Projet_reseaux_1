@@ -81,11 +81,15 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
     base_game.controllers = controllers
 
     # 3. Réseau P2P - Démarrage IPC local
+    import os
     from network.ipc_client import IPCClient
-    ipc = IPCClient(host="127.0.0.1", port=50000, local_id=ai1_name) # L'ID local est le nom du joueur 1 par défaut
+    ipc_port      = int(os.environ.get("P2P_PORT", "50000"))
+    ipc_player_id = os.environ.get("P2P_PLAYER_ID", ai1_name)
+    ipc = IPCClient(host="127.0.0.1", port=ipc_port, local_id=ipc_player_id)
     ipc.connect()
     base_game.ipc_client = ipc
-    base_game.local_client_id = ai1_name
+    base_game.local_client_id = ipc_player_id
+
 
     # 4. Lancer la simulation
     if terminal_mode:
