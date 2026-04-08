@@ -123,7 +123,8 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
                 base_game.step(dt=0.05)
 
             gui.handle_input()
-            gui.draw(screen)
+            current_state = base_game.export_state() if "base_game" in locals() else game.export_state()
+            gui.draw(screen, state=current_state)
             pygame.display.flip()
             clock.tick(30)
 
@@ -188,7 +189,8 @@ def load_game(savefile):
             game.step(dt=0.1)
 
         gui.handle_input()
-        gui.draw(screen)
+        current_state = base_game.export_state() if "base_game" in locals() else game.export_state()
+            gui.draw(screen, state=current_state)
         pygame.display.flip()
         clock.tick(30)
 

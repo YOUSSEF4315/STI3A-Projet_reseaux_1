@@ -385,7 +385,7 @@ class GUI:
     # --- HELPERS ANIMATION (NOUVEAU) ---
     def _update_unit_state(self, unit):
         """Met à jour l'état visuel (direction, action) basé sur la position et la vie."""
-        uid = id(unit)
+        uid = getattr(unit, "id", str(id(unit)))
         now = pygame.time.get_ticks()
         is_dead = getattr(unit, 'hp', 0) <= 0
         
@@ -429,7 +429,7 @@ class GUI:
                 state['accum_time'] = 0
                 
                 # Check end of animation
-                u_type = type(unit).__name__.lower()
+                u_type = getattr(unit, "unit_type", type(unit).__name__).lower()
                 current_anim = self.anim_mgr.animations.get(u_type, {}).get(state['action'], {}).get(state['direction'], [])
                 total_frames = len(current_anim)
                 
@@ -506,7 +506,7 @@ class GUI:
                          # SPECIFIC FIX FOR CROSSBOWMAN TEAM B
                          # User reports they shoot "where nobody is" (Backwards).
                          # We rotate them 180 degrees (-/+ 8 rows) to face the enemy.
-                         u_type_temp = type(unit).__name__.lower()
+                         u_type_temp = getattr(unit, "unit_type", type(unit).__name__).lower()
                          unit_team = getattr(unit, 'team', 'A')
                          
                          if u_type_temp == 'crossbowman' and unit_team == 'B':
@@ -515,7 +515,7 @@ class GUI:
                          state['direction'] = idx_t
 
                 # Check Frame End
-                u_type = type(unit).__name__.lower()
+                u_type = getattr(unit, "unit_type", type(unit).__name__).lower()
                 current_anim = self.anim_mgr.animations.get(u_type, {}).get('attack', {}).get(state['direction'], [])
                 
                 # If animation finished or no anim, go back to idle
@@ -550,7 +550,7 @@ class GUI:
         
         return state
 
-    def draw(self, screen):
+    def draw(self, screen, state=None):
         screen.fill((20, 20, 20))
         tw, th = self.get_scaled_tile_size()
         
@@ -617,7 +617,7 @@ class GUI:
 
         # Draw ALL Units (Alive + Dead animating)
         # Note: game.alive_units() only gives living. We need self.game.units
-        all_units = getattr(self.game, 'units', [])
+        all_units = getattr(state, 'units', getattr(self.game, 'units', []))
         # Sort for depth (Painters algorithm)
         sorted_units = sorted(all_units, key=lambda u: u.x + u.y) 
 
@@ -632,7 +632,7 @@ class GUI:
             screen_x = x_iso + self.camera_x; screen_y = y_iso + self.camera_y 
             
             if -150 < screen_x < self.screen_w and -150 < screen_y < self.screen_h:
-                u_type = type(unit).__name__.lower()
+                u_type = getattr(unit, "unit_type", type(unit).__name__).lower()
                 
                 # Get Frame
                 frame = self.anim_mgr.get_frame(u_type, state['action'], state['direction'], state['frame_idx'])
@@ -696,8 +696,8 @@ class GUI:
                     if getattr(unit, 'hp', 0) > 0:
                          pygame.draw.circle(screen, (255, 255, 255), (int(screen_x), int(screen_y)), 10)
 
-        self.draw_minimap(screen)
-        self.draw_army_stats(screen)
+        self.draw_minimap(screen, state)
+        self.draw_army_stats(screen, state)
 
         # Draw Custom Pointer
         if self.pointer_img:
@@ -707,7 +707,7 @@ class GUI:
 
     # ... Helper drawing methods ...
     # ... Helper drawing methods ...
-    def draw_minimap(self, screen):
+    def draw_minimap(self, screen, state=None):
         if not self.show_minimap or not self.map or not self.show_ui_master: return
         max_rows = getattr(self.map, 'rows', 120)
         max_cols = getattr(self.map, 'cols', 120)
@@ -767,7 +767,7 @@ class GUI:
         pygame.draw.polygon(screen, (34, 139, 34), [p1, p2, p3, p4])
         pygame.draw.polygon(screen, (100, 200, 100), [p1, p2, p3, p4], 1)
         
-        units = getattr(self.game, 'alive_units', lambda: [])()
+        units = [u for u in getattr(state, 'units', []) if u.hp > 0] if state else getattr(self.game, 'alive_units', lambda: [])()
         for unit in units:
             px, py = to_mini(getattr(unit, 'x', 0), getattr(unit, 'y', 0))
             color = COLOR_TEAM_A if getattr(unit, 'team', '?') == "A" else COLOR_TEAM_B
@@ -785,12 +785,12 @@ class GUI:
 
 
 
-    def draw_army_stats(self, screen):
+    def draw_army_stats(self, screen, state=None):
         if not self.show_ui_master: return
         counts = {'A': {}, 'B': {}}; totals = {'A': 0, 'B': 0}
-        units = getattr(self.game, 'alive_units', lambda: [])()
+        units = [u for u in getattr(state, 'units', []) if u.hp > 0] if state else getattr(self.game, 'alive_units', lambda: [])()
         for u in units:
-            team = getattr(u, 'team', '?'); u_type = type(u).__name__
+            team = getattr(u, 'team', '?'); u_type = getattr(u, 'unit_type', type(u).__name__)
             if team not in counts: counts[team] = {}
             counts[team][u_type] = counts[team].get(u_type, 0) + 1; totals[team] += 1
 

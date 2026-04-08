@@ -109,7 +109,8 @@ def main():
         view.handle_input() 
         
         # 2. Dessin de la scène
-        view.draw(screen)
+        current_state = game.export_state()
+        view.draw(screen, state=current_state)
         
         # 3. Overlay de Fin de partie (Centré dynamiquement)
         if game.is_finished():

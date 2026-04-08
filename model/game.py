@@ -474,6 +474,44 @@ class Game:
 
 
 
+    def export_state(self):
+        from .state import GameState, UnitState
+        unit_states = []
+        for u in self.units:
+            intent_s = None
+            if getattr(u, 'intent', None):
+                kind = u.intent[0]
+                if kind == "attack":
+                    target = u.intent[1]
+                    intent_s = ("attack", str(id(target)) if target else None)
+                elif kind == "move_to":
+                    intent_s = ("move_to", u.intent[1], u.intent[2])
+                else:
+                    intent_s = tuple(u.intent)
+            
+            us = UnitState(
+                id=str(id(u)),
+                unit_type=type(u).__name__,
+                team=getattr(u, "team", "?"),
+                x=float(u.x),
+                y=float(u.y),
+                hp=float(getattr(u, "hp", 0)),
+                max_hp=float(getattr(u, "max_hp", 0)),
+                cooldown=float(getattr(u, "cooldown", 0)),
+                intent=intent_s,
+                radius=float(getattr(u, "radius", 0.5)),
+                speed=float(getattr(u, "speed", 1.0))
+            )
+            unit_states.append(us)
+            
+        return GameState(
+            time=self.time,
+            running=self.running,
+            winner=self.winner,
+            units=unit_states,
+            map_elevation={}
+        )
+
     def get_battle_summary(self) -> dict:
         """
         Retourne un dictionnaire avec un résumé de la bataille :
