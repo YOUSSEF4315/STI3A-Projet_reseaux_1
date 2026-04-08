@@ -24,6 +24,7 @@ from model.terrain import TERRAIN_TYPES
 from presenter.ai import CaptainBraindead, MajorDaft, AssasinJack, PredictEinstein
 from presenter.smartAI import GeneralStrategus
 from .views import GUI
+from network.ipc_client import IPCClient
 
 # --- CONSTANTES ---
 SCREEN_WIDTH = 800
@@ -642,6 +643,15 @@ class MainMenu:
             "B": ai_b_class("B"),
         }
 
+        # --- SETUP RESEAU P2P ---
+        import os
+        ipc_port = int(os.environ.get("P2P_PORT", "50000"))
+        ipc_player_id = os.environ.get("P2P_PLAYER_ID", "A")
+        ipc = IPCClient(host="127.0.0.1", port=ipc_port, local_id=ipc_player_id)
+        ipc.connect()
+        game.ipc_client = ipc
+        game.local_client_id = ipc_player_id
+
         # NE PAS FERMER LE MENU (pygame.quit)
         # On lance la bataille dans la même fenêtre
         self.start_battle_window(game)
@@ -699,6 +709,54 @@ class MainMenu:
         
         print(f"Simulation running at {target_fps} FPS")
 
+        # ═══════════════════════════════════════════════════════
+        # PHASE D'ATTENTE DU PAIR (Handshake P2P)
+        # ═══════════════════════════════════════════════════════
+        import time as _time
+        ipc = getattr(game, 'ipc_client', None)
+        
+        if ipc:
+            # Si pas encore connecté au daemon, on réessaie pendant quelques secondes
+            if not ipc.connected:
+                print("[P2P] Connexion au daemon en cours...")
+                deadline = _time.time() + 5.0
+                while not ipc.connected and _time.time() < deadline:
+                    gui.render_waiting_screen(
+                        message="Connexion au daemon réseau...",
+                        sub=f"Port {ipc.port} — Lancez daemon.exe si ce n'est pas fait."
+                    )
+                    gui.tick(10)
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            battle_running = False; self.running = False; ipc.close(); return
+                    try:
+                        ipc.connect()
+                    except Exception: pass
+
+            # Maintenant on attend le pair
+            ipc.send_ready()
+            peer_ready = False
+            print("[P2P] En attente du Joueur 2...")
+
+            while not peer_ready and battle_running:
+                gui.render_waiting_screen(
+                    message="⚔  En attente du Joueur 2...",
+                    sub="La bataille démarrera quand l'adversaire sera prêt.  [ESC pour solo]"
+                )
+                gui.tick(15)
+
+                for msg in ipc.poll_messages():
+                    if msg.get("type") == "PLAYER_READY":
+                        peer_ready = True
+                        print("[P2P] Joueur 2 connecté !")
+
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        battle_running = False; self.running = False; ipc.close(); return
+                    elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        peer_ready = True
+        # ═══════════════════════════════════════════════════════
+
         while battle_running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -729,6 +787,13 @@ class MainMenu:
 
             if not game.is_finished() and auto_play:
                 game.step(dt=0.05)
+
+            # --- Synchronisation Réseau P2P ---
+            if ipc:
+                for msg in ipc.poll_messages():
+                    if msg.get("type") == "STATE_UPDATE":
+                        payload = msg.get("payload", {})
+                        game.apply_sync_state(payload, game.local_client_id)
 
             # Update GUI dimensions just in case
             gui.screen_w, gui.screen_h = self.screen.get_size()
@@ -857,6 +922,15 @@ class MainMenu:
             "A": ai_a_class("A"),
             "B": ai_b_class("B"),
         }
+
+        # --- SETUP RESEAU P2P ---
+        import os
+        ipc_port = int(os.environ.get("P2P_PORT", "50000"))
+        ipc_player_id = os.environ.get("P2P_PLAYER_ID", "A")
+        ipc = IPCClient(host="127.0.0.1", port=ipc_port, local_id=ipc_player_id)
+        ipc.connect()
+        game.ipc_client = ipc
+        game.local_client_id = ipc_player_id
 
         # Lancer la bataille
         self.start_battle_window(game)
