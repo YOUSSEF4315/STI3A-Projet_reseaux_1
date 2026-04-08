@@ -58,6 +58,20 @@ Il réceptionne le texte JSON envoyé par Python, le lit, puis envoie en retour 
 
 ---
 
+### Partie 3 : Connexion P2P en C (Joueur contre Joueur)
+
+Afin de permettre à deux programmes C de s'affronter sur le même réseau local, nous avons conçu un noeud P2P complet en C.
+
+#### Étape 7 : Le Noeud Peer-to-Peer (`p2p_node.c`)
+Vu que deux exécutables C doivent communiquer, l'un des deux doit impérativement devenir le serveur de la conversation. Le fichier `network_poc/p2p_node.c` contient l'implémentation des deux modes. Il est paramétrable via les arguments du terminal :
+
+- **Pour le Joueur 1 (Hôte) :** `./p2p_node --host 5000` (Écoute et attend une connexion).
+- **Pour le Joueur 2 (Client) :** `./p2p_node --connect 192.168.1.X 5000` (Se connecte à l'adresse IP de l'hôte).
+
+Les deux échangent avec succès des JSON en `C-to-C` !
+
+---
+
 ## Prochaine étape pour le projet grand format
 Maintenant que ces concepts sont démontrés indépendamment, l'objectif sera de les fusionner :
 - Modifier `visual_simulation.py` (ou créer un `server_main.py`) pour tourner le vrai jeu et envoyer via Socket son vériable `game.export_state()`.
