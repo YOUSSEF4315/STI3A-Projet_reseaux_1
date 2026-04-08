@@ -1,0 +1,14 @@
+daemon_c/daemon.exe
+daemon_c/build_errors.txt
+build_result.txt
+link_errors.txt
+tmp.txt
+tmp2.txt
+test_ipc.py
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+battle_attacks.txt
+*.pkl
+*.save

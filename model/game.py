@@ -59,6 +59,10 @@ class Game:
         self.team_damage_received: Dict[str, float] = {}
         self.kills: Dict[str, int] = {}
 
+        # IPC Réseau
+        self.ipc_client = None
+        self.local_client_id = "A" # A changer dynamiquement si besoin
+
         for team, controller in self.controllers.items():
             # Au début, elles peuvent décider immédiatement (time=0.0)
             self.next_decision_time[team] = 0.0
@@ -192,6 +196,10 @@ class Game:
         # 5) temps + victoire
         self.time += dt
         self.check_victory_conditions()
+        
+        # 6) Envoi de l'état P2P (Diffusion au LAN via le Daemon C)
+        if self.ipc_client:
+            self.ipc_client.send_state_update(self.get_sync_state())
 
     # ------------------------------------------------------------------
     # Application des actions

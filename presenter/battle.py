@@ -80,7 +80,14 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
     }
     base_game.controllers = controllers
 
-    # 3. Lancer la simulation
+    # 3. Réseau P2P - Démarrage IPC local
+    from network.ipc_client import IPCClient
+    ipc = IPCClient(host="127.0.0.1", port=50000, local_id=ai1_name) # L'ID local est le nom du joueur 1 par défaut
+    ipc.connect()
+    base_game.ipc_client = ipc
+    base_game.local_client_id = ai1_name
+
+    # 4. Lancer la simulation
     if terminal_mode:
         # Mode Terminal (curses)
         from view.terminal_view import TerminalView
@@ -115,6 +122,12 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
                         view.start()
                         return base_game
 
+            # Relève asynchrone du courrier P2P
+            for msg in ipc.poll_messages():
+                if msg.get("type") == "STATE_UPDATE":
+                    payload = msg.get("payload", {})
+                    base_game.apply_sync_state(payload, base_game.local_client_id)
+
             if not base_game.is_finished() and auto_play:
                 base_game.step(dt=0.05)
 
@@ -127,8 +140,9 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
                 running = False
 
         gui.close_window()
+        ipc.close()
 
-    # 4. Écriture des données si demandé
+    # 5. Écriture des données si demandé
     if datafile:
         summary = base_game.get_battle_summary()
         with open(datafile, "w", encoding="utf-8") as f:
