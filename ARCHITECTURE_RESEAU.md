@@ -70,6 +70,9 @@ Vu que deux exécutables C doivent communiquer, l'un des deux doit impérativeme
 
 Les deux échangent avec succès des JSON en `C-to-C` !
 
+> **Test Validé :** Nous avons testé avec succès la connexion entre l'hôte et le client sur le port `5001`. Le "Handshake" JSON (`{"action": "handshake", ...}`) a été transmis et reçu par les deux parties sans aucune perte de données.
+
+
 ---
 
 ## Prochaine étape pour le projet grand format
