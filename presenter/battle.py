@@ -110,34 +110,54 @@ def run_battle(scenario_name, ai1_name, ai2_name, terminal_mode=False, datafile=
         # ═══════════════════════════════════════════════════════
         # PHASE D'ATTENTE DU PAIR (Handshake P2P)
         # ═══════════════════════════════════════════════════════
-        if ipc.connected:
-            # On signale qu'on est prêt
-            ipc.send_ready()
-            peer_ready = False
-            print("[P2P] En attente du Joueur 2...")
+        import time as _time
 
-            while not peer_ready:
-                # Affichage de l'écran d'attente
+        # Si pas encore connecté au daemon, on réessaie pendant 10 secondes
+        if not ipc.connected:
+            print("[P2P] Connexion au daemon en cours...")
+            deadline = _time.time() + 10.0
+            while not ipc.connected and _time.time() < deadline:
                 gui.render_waiting_screen(
-                    message="⚔  En attente du Joueur 2...",
-                    sub="La bataille démarrera quand l'adversaire sera prêt."
+                    message="Connexion au daemon réseau...",
+                    sub=f"Port {ipc_port} — Lancez daemon.exe si ce n'est pas fait."
                 )
-                gui.tick(15)
-
-                # Vérifier si le pair a signalé qu'il est prêt
-                for msg in ipc.poll_messages():
-                    if msg.get("type") == "PLAYER_READY":
-                        peer_ready = True
-                        print("[P2P] Joueur 2 connecté ! Démarrage de la bataille...")
-
-                # Permettre de quitter même pendant l'attente
+                gui.tick(10)
                 events = gui.pump_events()
                 for event in events:
                     if event["type"] == "QUIT":
-                        gui.close_window()
-                        ipc.close()
-                        return base_game
+                        gui.close_window(); ipc.close(); return base_game
+                try:
+                    ipc.connect()
+                except Exception:
+                    pass
+
+        # Maintenant on attend le pair (que le daemon soit connecté ou non)
+        ipc.send_ready()
+        peer_ready = False
+        print("[P2P] En attente du Joueur 2...")
+
+        while not peer_ready:
+            gui.render_waiting_screen(
+                message="⚔  En attente du Joueur 2...",
+                sub="La bataille démarrera quand l'adversaire sera prêt.  [ESC pour jouer seul]"
+            )
+            gui.tick(15)
+
+            for msg in ipc.poll_messages():
+                if msg.get("type") == "PLAYER_READY":
+                    peer_ready = True
+                    print("[P2P] Joueur 2 connecté ! Démarrage !")
+
+            events = gui.pump_events()
+            for event in events:
+                if event["type"] == "QUIT":
+                    gui.close_window(); ipc.close(); return base_game
+                elif event["type"] == "KEYDOWN" and event["key"] == "escape":
+                    # Mode solo : on court-circuite l'attente
+                    peer_ready = True
+                    print("[P2P] Mode solo activé (ESC pressé).")
         # ═══════════════════════════════════════════════════════
+
 
         while running:
             events = gui.pump_events()
